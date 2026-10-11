@@ -27,6 +27,8 @@ struct DraftComposerView: View {
     @State private var editing: String?
     @State private var recalled: MemoryResult?
     @State private var copied = false
+    /// A spoken edit that arrived while a draft was still being written.
+    @State private var queuedEdit: String?
 
     struct DraftSet {
         let drafts: [Draft]
@@ -88,6 +90,11 @@ struct DraftComposerView: View {
         .onChange(of: edit) { _, instruction in
             guard let instruction else { return }
             editHandled()
+            revise(instruction)
+        }
+        .onChange(of: work) { _, work in
+            guard work == nil, let instruction = queuedEdit else { return }
+            queuedEdit = nil
             revise(instruction)
         }
     }
@@ -392,7 +399,11 @@ struct DraftComposerView: View {
     }
 
     private func revise(_ instruction: String) {
-        guard work == nil, let base = selectedText else { return }
+        guard work == nil else {
+            queuedEdit = instruction
+            return
+        }
+        guard let base = selectedText else { return }
         start(.all) { await model.voiceRevision(for: person, draft: base, instruction: instruction) }
     }
 

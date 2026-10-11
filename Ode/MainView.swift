@@ -22,6 +22,7 @@ struct MainView: View {
     @State private var notice: VoiceNotice?
     @State private var typed = ""
     @State private var keyMonitor: Any?
+    @State private var gate = PushToTalkGate()
     @State private var showingSettings = false
     @State private var home = true
     @FocusState private var searchFocused: Bool
@@ -84,7 +85,19 @@ struct MainView: View {
                 }
             }
             .onAppear { installPushToTalk() }
-            .onDisappear { keyMonitor.map(NSEvent.removeMonitor) }
+            .onDisappear {
+                keyMonitor.map(NSEvent.removeMonitor)
+                keyMonitor = nil
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in lostFocus() }
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in lostFocus() }
+            .onChange(of: capture.state) { _, state in
+                switch state {
+                case .denied: notice = .micOff
+                case .unavailable: notice = .unavailable
+                default: break
+                }
+            }
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(model: model).frame(width: 1100, height: 780)
@@ -184,30 +197,47 @@ struct MainView: View {
         .background(Theme.surface)
     }
 
-    /// Space held anywhere outside a text field talks to Ode; in a text field it's just a space.
+    /// Space held anywhere outside a text field talks to Ode; in a text field, a sheet or with a modifier it's just a space.
     private func installPushToTalk() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
-            guard event.keyCode == 49, event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
-                  !(NSApp.keyWindow?.firstResponder is NSTextView) else { return event }
-            if event.type == .keyDown, !event.isARepeat {
+            let isSpace = event.keyCode == 49
+            let action = event.type == .keyDown
+                ? gate.keyDown(isSpace: isSpace, isRepeat: event.isARepeat,
+                               hasModifiers: !event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+                               inTextField: NSApp.keyWindow?.firstResponder is NSTextView,
+                               inMainWindow: NSApp.keyWindow != nil && NSApp.keyWindow?.attachedSheet == nil
+                                   && NSApp.keyWindow === NSApp.mainWindow)
+                : gate.keyUp(isSpace: isSpace)
+            switch action {
+            case .start:
                 notice = nil
-                Task { await capture.start() }
-            } else if event.type == .keyUp {
-                Task {
-                    let heard = await capture.finish()
-                    switch capture.state {
-                    case .denied: notice = .micOff
-                    case .unavailable: notice = .unavailable
-                    default: if !heard.isEmpty { route(heard) }
-                    }
-                }
+                capture.press()
+            case .finish:
+                endListening()
+            case .swallow:
+                break
+            case .pass:
+                return event
             }
             return nil
         }
     }
 
+    private func lostFocus() {
+        if gate.lostFocus() == .finish { endListening() }
+    }
+
+    private func endListening() {
+        capture.release()
+        Task {
+            let heard = await capture.finish()
+            if !heard.isEmpty { route(heard) }
+        }
+    }
+
     private func route(_ text: String) {
+        guard !text.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         typed = ""
         notice = nil
         switch VoiceIntent.parse(text, people: model.voicePeople, focused: draftRequest?.person.id) {

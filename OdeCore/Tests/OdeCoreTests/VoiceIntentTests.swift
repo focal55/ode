@@ -84,6 +84,11 @@ import Testing
         #expect(parse("hey Ode, is anyone waiting on me") == .ask("is anyone waiting on me"))
     }
 
+    @Test func namingSomeoneElseWhileFocusedRedirects() {
+        #expect(parse("tell Sam Lee I'm running late", focused: 1) == .reply(conversationID: 2, request: "I'm running late"))
+        #expect(parse("Who should I check on?", focused: 1) == .ask("Who should I check on?"))
+    }
+
     @Test func everythingIsAnEditWhileFocused() {
         #expect(parse("um make it shorter", focused: 1) == .edit("make it shorter"))
         #expect(parse("tell Maya hi", focused: 1) == .edit("tell Maya hi"))

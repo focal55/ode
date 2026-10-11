@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 enum VoiceNotice: Equatable {
@@ -32,18 +33,33 @@ struct VoiceDock: View {
                 .background(.regularMaterial, in: .capsule)
             }
             if let notice { noticeView(notice) }
-            HStack(spacing: 8) {
-                TextField("Hold Space to talk, or type: \"tell Maya I'm in\"", text: $typed)
+            if needsTyping {
+                TextField("Type it instead: \"tell Maya I'm in\"", text: $typed)
                     .textFieldStyle(.plain)
                     .focused($typing)
-                    .onSubmit { submit(typed) }
+                    .onSubmit {
+                        submit(typed)
+                        letGo()
+                    }
+                    .onExitCommand { letGo() }
                     .frame(width: 360)
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.regularMaterial, in: .capsule)
             }
-            .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(.regularMaterial, in: .capsule)
         }
         .padding(.bottom, 20)
         .onChange(of: notice) { _, notice in if notice == .whoFor { typing = true } }
+    }
+
+    /// Only shown when Ode needs words it couldn't hear, so the dock never sits on top of the thread's own composer.
+    private var needsTyping: Bool {
+        notice == .whoFor || notice == .micOff || notice == .unavailable
+    }
+
+    /// Hands the keyboard back, so the next Space talks to Ode instead of typing here.
+    private func letGo() {
+        typing = false
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     @ViewBuilder private func noticeView(_ notice: VoiceNotice) -> some View {

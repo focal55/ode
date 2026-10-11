@@ -78,7 +78,14 @@ public enum VoiceIntent: Equatable, Sendable {
         while let first = words.first, filler.contains(key(first)) { words.removeFirst() }
         let spoken = words.joined(separator: " ")
         guard !words.isEmpty else { return .unknown("") }
-        if focused != nil { return .edit(spoken) }
+        if let focused {
+            // Naming someone else, or asking Ode, still works with a draft open; anything else edits the draft.
+            switch parse(spoken, people: people) {
+            case .reply(let id, _) where id != focused: return parse(spoken, people: people)
+            case .ambiguous, .ask: return parse(spoken, people: people)
+            default: return .edit(spoken)
+            }
+        }
 
         let keys = words.map(key)
         if isQuestionToOde(keys) { return .ask(spoken) }
