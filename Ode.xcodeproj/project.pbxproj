@@ -268,11 +268,11 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSContactsUsageDescription = "Ode shows your contacts' names instead of phone numbers and emails. Contacts are read on this Mac and never leave it.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ode listens only while you hold Space, and turns what you say into a draft on this Mac. Audio never leaves it.";
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -311,11 +311,11 @@
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				ENABLE_RESOURCE_ACCESS_CONTACTS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSContactsUsageDescription = "Ode shows your contacts' names instead of phone numbers and emails. Contacts are read on this Mac and never leave it.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Ode listens only while you hold Space, and turns what you say into a draft on this Mac. Audio never leaves it.";
-				ENABLE_RESOURCE_ACCESS_AUDIO_INPUT = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
