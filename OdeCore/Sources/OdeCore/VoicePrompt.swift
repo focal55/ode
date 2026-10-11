@@ -157,8 +157,30 @@ public enum VoiceCheck {
             .filter { !$0.isEmpty }
     }
 
+    static func contentStems(_ text: String) -> [String] {
+        words(text).map { shorthand[$0] ?? $0 }.filter { $0.count >= 4 && !stopWords.contains($0) }.map(stem)
+    }
+
     private static func stem(_ word: String) -> String {
         let base = word.count > 3 && word.hasSuffix("s") ? String(word.dropLast()) : word
         return String(base.prefix(5))
+    }
+}
+
+/// What Ode knows that's worth mentioning, offered as a tap rather than written in. Your promises come first.
+public enum VoiceSuggestions {
+    public static func make(openLoops: [String], reminders: [String], draft: String, limit: Int = 3) -> [String] {
+        let covered = Set(VoiceCheck.contentStems(draft))
+        var seen = Set<String>()
+        var picked: [String] = []
+        for candidate in openLoops + reminders {
+            let text = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, seen.insert(text.lowercased()).inserted else { continue }
+            let stems = VoiceCheck.contentStems(text)
+            if !stems.isEmpty, stems.filter(covered.contains).count * 2 >= stems.count { continue }
+            picked.append(text)
+            if picked.count == limit { break }
+        }
+        return picked
     }
 }
