@@ -18,10 +18,24 @@ import Testing
         #expect(try HandoffLog(directory: directory).pending() == [Handoff(conversationID: 7, at: at), Handoff(conversationID: 8, at: at)])
     }
 
-    @Test func recordingAgainReplacesThePendingHandoff() throws {
+    @Test func recordingAgainKeepsTheEarlierPendingHandoff() throws {
         try log.record(Handoff(conversationID: 7, at: at))
         try log.record(Handoff(conversationID: 7, at: at.addingTimeInterval(600)))
-        #expect(try log.pending() == [Handoff(conversationID: 7, at: at.addingTimeInterval(600))])
+        #expect(try log.pending() == [Handoff(conversationID: 7, at: at)])
+    }
+
+    @Test func aCorruptPendingFileDoesNotBlockRecording() throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("not json".utf8).write(to: directory.appendingPathComponent("handoffs.json"))
+        try log.record(Handoff(conversationID: 7, at: at))
+        #expect(try log.pending() == [Handoff(conversationID: 7, at: at)])
+    }
+
+    @Test func appendingTheSameKeptEventTwiceKeepsOne() throws {
+        let event = Kept(conversationID: 7, handoffAt: at, sentAt: at.addingTimeInterval(60), messageID: 1)
+        try log.appendKept([event])
+        try log.appendKept([event])
+        #expect(try log.kept() == [event])
     }
 
     @Test func keptEventsAppend() throws {

@@ -14,9 +14,12 @@ public struct HandoffLog: Sendable {
 
     public func pending() throws -> [Handoff] { try read(pendingURL) }
 
+    /// Keeps the earlier of two handoffs to one conversation, so a later copy never hides a send already made.
+    /// Pending handoffs live a day at most, so an unreadable file is replaced rather than allowed to block logging.
     public func record(_ handoff: Handoff) throws {
-        let others = try pending().filter { $0.conversationID != handoff.conversationID }
-        try write(others + [handoff], to: pendingURL)
+        let existing = (try? pending()) ?? []
+        guard !existing.contains(where: { $0.conversationID == handoff.conversationID }) else { return }
+        try write(existing + [handoff], to: pendingURL)
     }
 
     public func replacePending(_ handoffs: [Handoff]) throws {
@@ -26,8 +29,12 @@ public struct HandoffLog: Sendable {
     public func kept() throws -> [Kept] { try read(keptURL) }
 
     public func appendKept(_ new: [Kept]) throws {
-        guard !new.isEmpty else { return }
-        try write(try kept() + new, to: keptURL)
+        let existing = try kept()
+        let fresh = new.filter { event in
+            !existing.contains { $0.conversationID == event.conversationID && $0.messageID == event.messageID }
+        }
+        guard !fresh.isEmpty else { return }
+        try write(existing + fresh, to: keptURL)
     }
 
     private func read<T: Decodable>(_ url: URL) throws -> [T] {
