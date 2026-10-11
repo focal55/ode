@@ -369,19 +369,75 @@ final class AppModel {
                 loops[$0.id] == nil && ai.route(for: .quickReads, label: labels[$0.id]).provider == .onDevice
             }) {
                 _ = await openLoops(for: person, cloud: nil)
+                prepareDrafts()
             }
             checkingPromises = false
+            prepareDrafts()
         }
     }
 
     func draftReply(for person: PersonHealth, steer: String, length: DraftLength, avoid: [String] = []) async -> DraftResult? {
-        await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
+        activeDrafts += 1
+        defer { activeDrafts -= 1 }
+        return await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
                                  openLoops: confirmedLoops(for: person).map(\.task), steer: steer, length: length,
                                  isGroup: person.conversation.isGroup, avoid: avoid, cloud: cloud(.drafting, person))
     }
 
     func draftingRoute(for person: PersonHealth) -> Route {
         ai.route(for: .drafting, label: labels[person.id])
+    }
+
+    // MARK: Drafts written ahead
+
+    private var ready: [Int64: (signature: String, result: DraftResult)] = [:]
+    private var failedAhead: [Int64: String] = [:]
+    private var preparingDrafts = false
+    private var activeDrafts = 0
+    private static let draftsAhead = 5
+
+    /// Everything the prompt depends on, so drafts written ahead are only shown while they still fit.
+    private func draftSignature(_ person: PersonHealth, steer: String) -> String {
+        ([String(threads[person.id]?.last?.id ?? 0), steer] + confirmedLoops(for: person).map(\.task)).joined(separator: "|")
+    }
+
+    func readyDrafts(for person: PersonHealth, steer: String) -> DraftResult? {
+        guard let ready = ready[person.id], ready.signature == draftSignature(person, steer: steer) else { return nil }
+        return ready.result
+    }
+
+    /// Drafts replies for the top of the waiting list so the composer opens with them already
+    /// there. Only with LM Studio: Apple's drafts aren't worth writing unasked, and cloud calls
+    /// need consent. Waits while you draft, since LM Studio answers one request at a time.
+    private func prepareDrafts() {
+        guard !preparingDrafts else { return }
+        preparingDrafts = true
+        Task {
+            while let (person, steer) = nextToPrepare() {
+                while activeDrafts > 0 { try? await Task.sleep(for: .seconds(1)) }
+                let signature = draftSignature(person, steer: steer)
+                let result = await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
+                                                      openLoops: confirmedLoops(for: person).map(\.task), steer: steer,
+                                                      length: .balanced, isGroup: person.conversation.isGroup,
+                                                      cloud: cloud(.drafting, person), fallback: false)
+                if case .drafts(_, onDevice: false)? = result {
+                    ready[person.id] = (signature, result!)
+                } else {
+                    failedAhead[person.id] = signature
+                }
+            }
+            preparingDrafts = false
+        }
+    }
+
+    private func nextToPrepare() -> (PersonHealth, String)? {
+        for item in waiting.prefix(Self.draftsAhead) {
+            guard let person = people.first(where: { $0.id == item.conversationID }),
+                  draftingRoute(for: person).provider == .local else { continue }
+            let signature = draftSignature(person, steer: item.steer)
+            if ready[person.id]?.signature != signature && failedAhead[person.id] != signature { return (person, item.steer) }
+        }
+        return nil
     }
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {

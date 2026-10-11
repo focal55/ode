@@ -28,6 +28,7 @@ struct DraftComposerView: View {
     struct DraftSet {
         let drafts: [Draft]
         let onDevice: Bool
+        var ahead = false
     }
 
     enum Work: Equatable {
@@ -69,7 +70,13 @@ struct DraftComposerView: View {
         .background(Theme.ground)
         .task {
             recalled = await model.recalled(for: person)
-            if let initialResult { accept(initialResult) } else { generate() }
+            if let initialResult {
+                accept(initialResult)
+            } else if let ready = model.readyDrafts(for: person, steer: steer) {
+                accept(ready, ahead: true)
+            } else {
+                generate()
+            }
         }
         .onDisappear { task?.cancel() }
     }
@@ -235,13 +242,13 @@ struct DraftComposerView: View {
             .font(.system(size: 13))
             .foregroundStyle(Theme.secondary)
         } else if let current, current.onDevice, route.provider != .onDevice {
-            Label("\(modelName) didn’t answer, so Apple’s on-device model wrote these. Is LM Studio running?",
+            Label("Apple’s on-device model wrote these. \(model.ai.localProblem ?? "\(modelName) didn’t answer.")",
                   systemImage: "exclamationmark.triangle")
                 .font(.system(size: 13)).foregroundStyle(Theme.warning)
         } else if notice == .blocked, !sets.isEmpty {
             Text("That redraft was declined. These are your last drafts.").font(.system(size: 13)).foregroundStyle(Theme.warning)
         } else if let current {
-            Text("By \(current.onDevice ? "Apple on-device" : modelName) · \(current.onDevice ? "on this Mac" : place)")
+            Text("By \(current.onDevice ? "Apple on-device" : modelName) · \(current.onDevice ? "on this Mac" : place)\(current.ahead ? " · written before you opened this" : "")")
                 .font(.system(size: 13)).foregroundStyle(Theme.muted)
         }
     }
@@ -403,13 +410,13 @@ struct DraftComposerView: View {
         work = nil
     }
 
-    private func accept(_ result: DraftResult, keepChoice: Bool = false) {
+    private func accept(_ result: DraftResult, keepChoice: Bool = false, ahead: Bool = false) {
         guard case .drafts(let drafts, let onDevice) = result else {
             notice = result
             return
         }
         let carried = edits.filter { $0.key.hasPrefix("\(index)|") }
-        sets.append(DraftSet(drafts: drafts, onDevice: onDevice))
+        sets.append(DraftSet(drafts: drafts, onDevice: onDevice, ahead: ahead))
         let previousIndex = index
         index = sets.count - 1
         editing = nil
