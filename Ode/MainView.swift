@@ -17,6 +17,7 @@ struct MainView: View {
     @State private var results: [MemoryResult]?
     @State private var focus: Int64?
     @State private var draftRequest: DraftRequest?
+    @State private var pendingEdit: String?
     @State private var showingSettings = false
     @State private var home = true
     @FocusState private var searchFocused: Bool
@@ -24,6 +25,7 @@ struct MainView: View {
     struct DraftRequest: Identifiable {
         let person: PersonHealth
         let steer: String
+        var spoken = ""
         let id = UUID()
     }
 
@@ -50,7 +52,8 @@ struct MainView: View {
                 }
                 Divider().overlay(Theme.hairline)
                 if let request = draftRequest {
-                    DraftComposerView(model: model, person: request.person, close: { draftRequest = nil }, steer: request.steer)
+                    DraftComposerView(model: model, person: request.person, close: { draftRequest = nil }, steer: request.steer,
+                                      spoken: request.spoken, edit: pendingEdit, editHandled: { pendingEdit = nil })
                         .id(request.id)
                 } else if let results {
                     MemoryResultsView(query: query, results: results) { open($0) }

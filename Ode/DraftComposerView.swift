@@ -11,6 +11,9 @@ struct DraftComposerView: View {
 
     @State var steer: String
     var initialResult: DraftResult?
+    var spoken = ""
+    var edit: String?
+    var editHandled: () -> Void = {}
     @State private var length = DraftLength.balanced
     /// Every set drafted so far, so a redraft never costs you one you liked.
     @State private var sets: [DraftSet] = []
@@ -40,6 +43,7 @@ struct DraftComposerView: View {
     private var style: WritingStyle { WritingStyle(of: messages) }
     private var current: DraftSet? { sets.indices.contains(index) ? sets[index] : nil }
     private var drafts: [Draft] { current?.drafts ?? [] }
+    private var inYourWords: Bool { drafts.first?.label == VoiceDrafter.label }
     private var route: Route { model.draftingRoute(for: person) }
 
     private var modelName: String {
@@ -70,7 +74,9 @@ struct DraftComposerView: View {
         .background(Theme.ground)
         .task {
             recalled = await model.recalled(for: person)
-            if let initialResult {
+            if !spoken.isEmpty {
+                start(.all) { await model.voiceDraft(for: person, request: spoken) }
+            } else if let initialResult {
                 accept(initialResult)
             } else if let ready = model.readyDrafts(for: person, steer: steer) {
                 accept(ready, ahead: true)
@@ -79,6 +85,11 @@ struct DraftComposerView: View {
             }
         }
         .onDisappear { task?.cancel() }
+        .onChange(of: edit) { _, instruction in
+            guard let instruction else { return }
+            editHandled()
+            revise(instruction)
+        }
     }
 
     private var header: some View {
@@ -133,7 +144,7 @@ struct DraftComposerView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
-                        Text("Three ways to say it").font(.system(size: 22, weight: .semibold)).tracking(-0.4)
+                        Text(inYourWords ? "In your words" : "Three ways to say it").font(.system(size: 22, weight: .semibold)).tracking(-0.4)
                         if sets.count > 1 { pager }
                         Spacer()
                         lengthPicker
@@ -374,9 +385,15 @@ struct DraftComposerView: View {
     private func generate() {
         guard work == nil else { return }
         let avoid = drafts.map(text(of:))
+        let steerText = steer.trimmingCharacters(in: .whitespaces).isEmpty ? spoken : steer.trimmingCharacters(in: .whitespaces)
         start(.all) {
-            await model.draftReply(for: person, steer: steer.trimmingCharacters(in: .whitespaces), length: length, avoid: avoid)
+            await model.draftReply(for: person, steer: steerText, length: length, avoid: avoid)
         }
+    }
+
+    private func revise(_ instruction: String) {
+        guard work == nil, let base = selectedText else { return }
+        start(.all) { await model.voiceRevision(for: person, draft: base, instruction: instruction) }
     }
 
     private func reroll(_ draft: Draft) {
