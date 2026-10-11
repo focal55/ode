@@ -11,12 +11,14 @@ let usage = """
     ode-eval run --model <id|apple> [--judge qwen/qwen3.6-27b] [--length balanced] [--label name]
                  [--base-url http://localhost:1234/v1] [--limit N]
         Draft each reply with a model, have the judge score the drafts against what you sent.
+    ode-eval review [--count 20] [--models qwen/qwen3.6-27b,apple]
+        Blind pairs: pick the set of drafts you'd rather reply from. Uses each model's latest run.
     ode-eval summary
-        Compare every run so far.
+        Compare every run so far, and your blind picks.
     """
 
-let folder = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent("Library/Application Support/Ode/eval", isDirectory: true)
+let folder = ProcessInfo.processInfo.environment["ODE_EVAL_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Ode/eval", isDirectory: true)
 let setURL = folder.appendingPathComponent("moments.json")
 let runsFolder = folder.appendingPathComponent("runs", isDirectory: true)
 
@@ -361,17 +363,142 @@ func printTable(_ runs: [Run]) {
     }
 }
 
-func summary() throws {
+func loadRuns() -> [Run] {
     let files = (try? FileManager.default.contentsOfDirectory(at: runsFolder, includingPropertiesForKeys: nil)) ?? []
-    let runs = files.filter { $0.pathExtension == "json" }.sorted { $0.path < $1.path }
+    return files.filter { $0.pathExtension == "json" }.sorted { $0.path < $1.path }
         .compactMap { try? decoder.decode(Run.self, from: Data(contentsOf: $0)) }
+}
+
+func summary() throws {
+    let runs = loadRuns()
     guard !runs.isEmpty else { fail("No runs yet.") }
     printTable(runs)
+    let picks = loadPicks()
+    if !picks.isEmpty {
+        print("")
+        printPicks(picks)
+    }
+}
+
+// MARK: - Review
+
+struct Pick: Codable {
+    let moment: String
+    let left: String
+    let right: String
+    /// "left", "right", "both" (either would do) or "neither".
+    let choice: String
+    let date: Date
+}
+
+let picksURL = folder.appendingPathComponent("picks.json")
+
+func loadPicks() -> [Pick] {
+    (try? Data(contentsOf: picksURL)).flatMap { try? decoder.decode([Pick].self, from: $0) } ?? []
+}
+
+func pairKey(_ moment: String, _ first: String, _ second: String) -> String {
+    ([moment] + [first, second].sorted()).joined(separator: "|")
+}
+
+func review() throws {
+    guard let data = try? Data(contentsOf: setURL) else { fail("No test set yet. Run `ode-eval build` first.") }
+    let moments = Dictionary(try decoder.decode([StoredMoment].self, from: data).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+    var latest: [String: Run] = [:]
+    for run in loadRuns() { latest[run.model] = run }
+    if let list = option("models") {
+        let wanted = Set(list.split(separator: ",").map(String.init))
+        latest = latest.filter { wanted.contains($0.key) }
+    }
+    guard latest.count >= 2 else { fail("Need runs from at least two models. Have: \(latest.keys.sorted().joined(separator: ", "))") }
+    let drafts = latest.mapValues { run in
+        Dictionary(run.results.filter { $0.error == nil && !$0.drafts.isEmpty }.map { ($0.id, $0.drafts) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    var picks = loadPicks()
+    let done = Set(picks.map { pairKey($0.moment, $0.left, $0.right) })
+    let models = latest.keys.sorted()
+    // Every pair of models takes turns, so a short session still compares each pair.
+    var queues: [[(moment: String, first: String, second: String)]] = []
+    for (index, first) in models.enumerated() {
+        for second in models[(index + 1)...] {
+            queues.append(moments.keys.filter { id in
+                drafts[first]?[id] != nil && drafts[second]?[id] != nil && !done.contains(pairKey(id, first, second))
+            }.shuffled().map { ($0, first, second) })
+        }
+    }
+    queues.shuffle()
+    let count = option("count").flatMap(Int.init) ?? 20
+    var todo: [(moment: String, first: String, second: String)] = []
+    var round = 0
+    while todo.count < count, queues.contains(where: { round < $0.count }) {
+        for queue in queues where round < queue.count && todo.count < count { todo.append(queue[round]) }
+        round += 1
+    }
+    guard !todo.isEmpty else { fail("You've reviewed every pair these runs can make. Do a new run to review more.") }
+
+    let bold = "\u{1B}[1m", dim = "\u{1B}[2m", reset = "\u{1B}[0m"
+    for (index, item) in todo.enumerated() {
+        let moment = moments[item.moment]!
+        let (left, right) = Bool.random() ? (item.first, item.second) : (item.second, item.first)
+        print("\u{1B}[2J\u{1B}[H\(dim)\(index + 1) of \(todo.count)\(reset)\n")
+        for message in moment.context.suffix(8) {
+            print(message.fromMe ? "  \(bold)You:\(reset) \(message.text)" : "  \(dim)\(message.speaker):\(reset) \(message.text)")
+        }
+        for (name, model) in [("A", left), ("B", right)] {
+            print("\n\(bold)\(name)\(reset)")
+            for draft in drafts[model]![item.moment]! { print("  - \(draft.text)") }
+        }
+        print("\nWhich set would you rather pick your reply from?")
+        var choice: String?
+        while choice == nil {
+            print("[a] A   [b] B   [=] either is fine   [n] neither   [s] skip   [q] quit: ", terminator: "")
+            guard let line = readLine()?.trimmingCharacters(in: .whitespaces).lowercased() else { choice = "q"; break }
+            choice = ["a": "left", "b": "right", "=": "both", "n": "neither", "s": "s", "q": "q"][line]
+        }
+        if choice == "q" { break }
+        if choice == "s" { continue }
+        picks.append(Pick(moment: item.moment, left: left, right: right, choice: choice!, date: .now))
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try encoder.encode(picks).write(to: picksURL, options: .atomic)
+    }
+    print("\u{1B}[2J\u{1B}[H")
+    printPicks(picks)
+}
+
+/// "Won" counts sets you picked over the other; "fine" adds the times either would do, so it
+/// reads as how often that model gave you something you'd send.
+func printPicks(_ picks: [Pick]) {
+    print("Your blind picks (\(picks.count))")
+    let models = Set(picks.flatMap { [$0.left, $0.right] }).sorted()
+    print("model".padding(toLength: 28, withPad: " ", startingAt: 0) + "  seen  won  lost  either  neither  win rate  fine")
+    for model in models {
+        let seen = picks.filter { $0.left == model || $0.right == model }
+        let won = seen.filter { ($0.choice == "left" && $0.left == model) || ($0.choice == "right" && $0.right == model) }.count
+        let either = seen.filter { $0.choice == "both" }.count
+        let neither = seen.filter { $0.choice == "neither" }.count
+        let lost = seen.count - won - either - neither
+        let rate = (Double(won) + Double(either + neither) / 2) / Double(seen.count) * 100
+        let fine = Double(won + either) / Double(seen.count) * 100
+        print(String(format: "%@  %4d  %3d  %4d  %6d  %7d  %7.0f%%  %3.0f%%", model.padding(toLength: 28, withPad: " ", startingAt: 0),
+                     seen.count, won, lost, either, neither, rate, fine))
+    }
+    print("\nHead to head")
+    for (index, first) in models.enumerated() {
+        for second in models[(index + 1)...] {
+            let pair = picks.filter { Set([$0.left, $0.right]) == Set([first, second]) }
+            guard !pair.isEmpty else { continue }
+            let firstWins = pair.filter { ($0.choice == "left" && $0.left == first) || ($0.choice == "right" && $0.right == first) }.count
+            let secondWins = pair.filter { ($0.choice == "left" && $0.left == second) || ($0.choice == "right" && $0.right == second) }.count
+            print("  \(first) \(firstWins), \(second) \(secondWins)  (either \(pair.filter { $0.choice == "both" }.count), neither \(pair.filter { $0.choice == "neither" }.count))")
+        }
+    }
 }
 
 switch CommandLine.arguments.dropFirst().first {
 case "build": try build()
 case "run": try await run()
+case "review": try review()
 case "summary": try summary()
 default: print(usage)
 }
