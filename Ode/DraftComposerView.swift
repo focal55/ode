@@ -441,22 +441,14 @@ struct DraftComposerView: View {
     }
 
     private func copy(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        model.handOff(person, text: text, openMessages: false)
         copied = true
     }
 
     private func sendViaMessages() {
         guard let text = selectedText else { return }
-        copy(text)
-        let participants = person.conversation.participants
-        if !person.conversation.isGroup, participants.count == 1,
-           let handle = participants[0].addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
-           let url = URL(string: "imessage:\(handle)") {
-            NSWorkspace.shared.open(url)
-        } else if let messagesApp = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.MobileSMS") {
-            NSWorkspace.shared.openApplication(at: messagesApp, configuration: .init())
-        }
+        model.handOff(person, text: text, openMessages: true)
+        copied = true
     }
 }
 

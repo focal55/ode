@@ -266,6 +266,32 @@ final class AppModel {
     private(set) var indexingProgress: Double?
     private var indexing: Task<Void, Never>?
 
+    nonisolated private static var supportDirectory: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Ode", isDirectory: true)
+    }
+
+    private let handoffs = HandoffLog(directory: AppModel.supportDirectory)
+
+    /// Records that a reply left Ode, so a send that follows counts as kept.
+    func handOff(_ person: PersonHealth, text: String, openMessages: Bool) {
+        MessagesHandoff.copy(text)
+        if openMessages { MessagesHandoff.open(person) }
+        let now = Date(timeIntervalSinceReferenceDate: Date.now.timeIntervalSinceReferenceDate.rounded(.down))
+        try? handoffs.record(Handoff(conversationID: person.id, at: now))
+    }
+
+    private func checkKept() {
+        guard let pending = try? handoffs.pending(), !pending.isEmpty else { return }
+        let result = KeptDetector.detect(handoffs: pending, threads: threads)
+        guard result.pending != pending else { return }
+        do {
+            try handoffs.appendKept(result.kept)
+            try handoffs.replacePending(result.pending)
+        } catch {
+            return
+        }
+    }
+
     nonisolated private static var memoryPath: String {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support.appendingPathComponent("Ode/memory.sqlite").path
@@ -529,6 +555,7 @@ final class AppModel {
             await Task.detached(priority: .utility) { _ = try? Self.openMemory()?.index.prune(keeping: chosen) }.value
             updateMemory(for: people)
             judgePromises()
+            checkKept()
         } catch {
             phase = .failed(String(describing: error))
         }
@@ -567,6 +594,7 @@ final class AppModel {
             updateMemory(for: [people[index]])
         }
         judgePromises()
+        checkKept()
     }
 }
 
