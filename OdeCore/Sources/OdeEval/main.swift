@@ -15,6 +15,8 @@ let usage = """
         Blind pairs: pick the set of drafts you'd rather reply from. Uses each model's latest run.
     ode-eval summary
         Compare every run so far, and your blind picks.
+    ode-eval voice --model <id|apple> [--base-url http://localhost:1234/v1]
+        Turn invented spoken requests into messages and check nothing was added or dropped.
     """
 
 let folder = ProcessInfo.processInfo.environment["ODE_EVAL_DIR"].map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -500,5 +502,6 @@ case "build": try build()
 case "run": try await run()
 case "review": try review()
 case "summary": try summary()
+case "voice": try await voice()
 default: print(usage)
 }
