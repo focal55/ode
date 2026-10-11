@@ -116,12 +116,15 @@ enum CloudClient {
     }
 
     /// OpenAI's chat completions shape, which LM Studio's local server also speaks.
-    static func openAICompatible(baseURL: URL, key: String?, model: String, _ request: CloudRequest) async throws -> (Data, Usage) {
-        let body: [String: Any] = [
+    /// `idleUnload` is LM Studio's `ttl`: seconds without a request before it frees the model's memory.
+    static func openAICompatible(baseURL: URL, key: String?, model: String, idleUnload: Int? = nil,
+                                 _ request: CloudRequest) async throws -> (Data, Usage) {
+        var body: [String: Any] = [
             "model": model,
             "messages": [["role": "system", "content": request.system], ["role": "user", "content": request.prompt]],
             "response_format": ["type": "json_schema", "json_schema": ["name": request.schemaName, "strict": true, "schema": request.schema]],
         ]
+        if let idleUnload { body["ttl"] = idleUnload }
         var urlRequest = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")

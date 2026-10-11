@@ -37,11 +37,12 @@ enum DraftResult: Equatable {
     case blocked
 }
 
-/// Drafts replies on device. Nothing is sent; the user copies or opens Messages. Returns nil
-/// only when the task was cancelled.
+/// Drafts replies with the chosen model, falling back to Apple's unless `fallback` is false.
+/// Nothing is sent; the user copies or opens Messages. Returns nil only when the task was cancelled.
 enum ReplyDrafter {
     static func draft(messages: [Message], name: (String?) -> String, openLoops: [String], steer: String,
-                      length: DraftLength, isGroup: Bool, avoid: [String] = [], cloud: CloudRunner? = nil) async -> DraftResult? {
+                      length: DraftLength, isGroup: Bool, avoid: [String] = [], cloud: CloudRunner? = nil,
+                      fallback: Bool = true) async -> DraftResult? {
         let prompt = ReplyPrompt.prompt(messages: messages, name: name, openLoops: openLoops, steer: steer,
                                         length: length, isGroup: isGroup, avoid: avoid)
 
@@ -56,7 +57,7 @@ enum ReplyDrafter {
         }
         // A stopped cloud call fails like any other; don't spend the on-device model on it.
         guard !Task.isCancelled else { return nil }
-        guard SystemLanguageModel.default.isAvailable else { return .unavailable }
+        guard fallback || cloud == nil, SystemLanguageModel.default.isAvailable else { return .unavailable }
         for _ in 0..<2 {
             let session = LanguageModelSession(instructions: ReplyPrompt.instructions)
             guard !Task.isCancelled else { return nil }

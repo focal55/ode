@@ -179,14 +179,51 @@ final class AISettings {
                 try await CloudClient.openAICompatible(baseURL: URL(string: "https://api.openai.com/v1")!,
                                                        key: keys[.openAI], model: route.model, outgoing)
             case .local:
-                try await CloudClient.openAICompatible(baseURL: localURL, key: nil, model: route.model, outgoing)
+                try await local(outgoing, model: route.model)
             case .onDevice:
                 throw CloudError.malformed
             }
+            if route.provider == .local { localProblem = nil }
             record(usage, route: route)
             return Data(redactor.restore(String(decoding: data, as: UTF8.self)).utf8)
         } catch {
+            if route.provider == .local { localProblem = Self.describeLocal(error, model: route.model) }
             return nil
+        }
+    }
+
+    /// Why the last LM Studio call failed, in words for the composer; nil after a success.
+    private(set) var localProblem: String?
+
+    /// LM Studio keeps every model it has loaded and refuses to load another once memory is
+    /// full, so a model left over from other work blocks Ode's. Clearing them and asking once
+    /// more loads only the one this request names.
+    /// Long enough to keep the model warm through a back-and-forth, short enough that its memory
+    /// comes back soon after you stop.
+    private static let localIdleUnload = 600
+
+    private func local(_ request: CloudRequest, model: String) async throws -> (Data, Usage) {
+        do {
+            return try await CloudClient.openAICompatible(baseURL: localURL, key: nil, model: model, idleUnload: Self.localIdleUnload, request)
+        } catch CloudError.http(400, let body) where body.contains("Failed to load model") {
+            await Task.detached { LMStudio.unloadAll() }.value
+            return try await CloudClient.openAICompatible(baseURL: localURL, key: nil, model: model, idleUnload: Self.localIdleUnload, request)
+        }
+    }
+
+    private static func describeLocal(_ error: Error, model: String) -> String {
+        let name = model.split(separator: "/").last.map(String.init) ?? model
+        switch error {
+        case CloudError.http(400, let body) where body.contains("Failed to load model"):
+            return "LM Studio doesn’t have the memory to load \(name), even with other models closed."
+        case CloudError.http(let code, _):
+            return "LM Studio answered \(code)."
+        case let error as URLError where error.code == .cannotConnectToHost || error.code == .cannotFindHost:
+            return "LM Studio isn’t running, or its server is off."
+        case let error as URLError where error.code == .timedOut:
+            return "\(name) took too long to answer."
+        default:
+            return "\(name) didn’t give usable drafts."
         }
     }
 
@@ -257,5 +294,19 @@ final class AISettings {
         case let error as URLError where error.code == .cannotConnectToHost: "Couldn’t reach the server. Is it running?"
         default: "Couldn’t verify: \(error.localizedDescription)"
         }
+    }
+}
+
+enum LMStudio {
+    static func unloadAll() {
+        let lms = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lmstudio/bin/lms")
+        guard FileManager.default.isExecutableFile(atPath: lms.path) else { return }
+        let process = Process()
+        process.executableURL = lms
+        process.arguments = ["unload", "--all"]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try? process.run()
+        process.waitUntilExit()
     }
 }
