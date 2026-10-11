@@ -12,7 +12,12 @@ The test for every feature: **does it help me say the right thing to someone I c
 
 ## User
 
-The first user is the founder, Joe, and Ode is meant to become a business. The likely early buyers are people who care about their people and feel guilty about being bad at texting: anxious texters, people with ADHD, and busy founders.
+Ode is a personal tool for Joe and a small circle of people he can set up in person, built around a local LLM. It is explored with a business mindset but with no pressure to launch publicly (decided October 2026). If it goes public one day, the likely buyers are people who care about their people and feel guilty about being bad at texting: anxious texters, people with ADHD, and busy founders.
+
+What this means for the work:
+- Judge a feature by whether Joe actually reaches for it, not by what it would cost to ship to strangers.
+- Local compute is free. Expensive background work is fine: pre-drafting, nightly per-person summaries, re-judging every promise.
+- Keep the door open cheaply: stable identifiers, the drafting eval, and journey notes on what actually helped. Skip launch-only work (onboarding for strangers, notarization, trademark filing) until there's evidence it's worth it.
 
 ## Product shape
 
@@ -28,11 +33,11 @@ Backstage. Keep these, but show them only as context in the loop above and don't
 - Health metrics, temperature, patterns: shown as context while composing, not as a place you go.
 - Group per-member breakdown: one "Sam went quiet in the group" item on the home list.
 - Memory search (Cmd-K): memory should appear in the composer on its own.
-- Multi-provider AI settings: a power-user setting, not the product.
+- Multi-provider AI settings: cloud providers (Anthropic, OpenAI) are hidden behind `AISettings.cloudEnabled = false`. The code stays so they can come back.
 
 Positioning: "never wonder what to text, and never drop the ball on people you love." Not "relationship analytics", which reads as creepy.
 
-What we measure: messages sent that started in Ode.
+What we measure: messages sent that started in Ode. If Joe isn't reaching for it most days, the problem is the product, not distribution.
 
 ## Why we win
 
@@ -55,11 +60,14 @@ Competitors as of October 2026:
 ## Principles
 
 - Ode never sends a message. The user always presses send in Messages.
-- Local first. Messages, embeddings and memory stay on the Mac. Cloud models are opt-in, ask consent per conversation, redact contact details, and stop at a spend cap.
+- Local first. Messages, embeddings, memory and generation stay on the Mac. A local model served by LM Studio (OpenAI-compatible, `http://localhost:1234/v1`) is the primary engine; Apple's on-device model is only a fallback, because its drafts are much worse. When the fallback runs, say so in the UI. The cloud path (consent per conversation, redaction, spend cap) is kept but hidden.
 - The other people in these conversations never agreed to be analyzed. Write copy and design features that respect that; avoid scoring or surveilling people.
 
 ## Known risks
 
+Most of these only matter if Ode goes public.
+
+- **Local model dependency:** drafting quality depends on LM Studio running with a good model. If it isn't running, Ode falls back to Apple's model, so that fallback must stay visible.
 - **Full Disk Access onboarding** is the biggest funnel drop. The sandbox is off, so the app can't ship through the Mac App Store; it needs direct distribution with notarization. Show value before asking for access where possible (the file and paste import paths).
 - **Reach** is limited to Mac users with Messages history synced to the Mac. No WhatsApp, Signal or Android.
 - **Platform** risk: Apple controls the chat.db schema (there is drift detection), the on-device model (its safety filter blocks some ordinary excerpts), and the Messages features we compete with.
@@ -68,13 +76,14 @@ Competitors as of October 2026:
 
 ## Code layout
 
-- `OdeCore/`: Swift package holding everything testable. It reads chat.db read-only and computes metrics, patterns, open loops, memory (SQLite with MiniLM embeddings), writing style, draft review and redaction. `ode-probe` prints aggregate decode health without any message content.
+- `OdeCore/`: Swift package holding everything testable. It reads chat.db read-only and computes metrics, patterns, open loops, memory (SQLite with MiniLM embeddings), writing style, draft review, redaction and the drafting prompt (`ReplyPrompt`). `ode-probe` prints aggregate decode health without any message content.
+- `ode-eval` (in `OdeCore/`) measures drafting against replies Joe actually sent. `build` freezes a test set from the conversations chosen in Ode, `run --model <LM Studio id|apple>` drafts each one and has a local judge score the drafts, and `summary` compares runs. The terminal shows only scores; message text stays in `~/Library/Application Support/Ode/eval/`, including the per-run reports. Don't read those reports or paste them into a chat: they hold other people's messages. Run it before and after any change to the prompt, model or context to see whether drafting got better.
 - `Ode/`: the SwiftUI macOS app (macOS 26). `AppModel.swift` holds the app state; each screen is its own view file.
 - `brand/`: SVG masters of the mark and the wordmark, with "de" outlined so no font is needed.
 - `tools/brand/`: `wordmark.py` regenerates the SVGs from Nunito's variable font (`Nunito[wght].ttf` from google/fonts, OFL); `AppIcon.swift` renders `Ode/Assets.xcassets/AppIcon.appiconset`. The in-app `Wordmark` view draws `Wordmark.imageset`, a copy of `brand/ode-wordmark.svg`.
 - `tools/minilm/`: conversion scripts for the bundled embedding model. See its README.
 
-Run the core tests with `cd OdeCore && swift test`. Build the app by opening `Ode.xcodeproj` in Xcode. From the command line, `xcode-select` points at the Command Line Tools on this Mac, so prefix with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` to use `xcodebuild`.
+Run the core tests with `cd OdeCore && DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swift test`; the Command Line Tools toolchain lacks the Swift Testing macros. Build the app by opening `Ode.xcodeproj` in Xcode. From the command line, `xcode-select` points at the Command Line Tools on this Mac, so prefix with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` to use `xcodebuild`.
 
 ## Workforce: opted out
 
