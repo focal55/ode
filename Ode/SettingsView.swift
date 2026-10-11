@@ -314,6 +314,7 @@ private struct ModelsSettings: View {
 private struct AccessSettings: View {
     @Bindable var model: AppModel
     @State private var messages: MessagesAccess?
+    @AppStorage(OdeVoice.settingKey) private var odeSpeaks = true
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -326,6 +327,9 @@ private struct AccessSettings: View {
             row("Contacts", contactsStatus, ok: CNContactStore.authorizationStatus(for: .contacts) == .authorized) { EmptyView() }
             Toggle("Keep syncing new messages", isOn: $model.liveSyncEnabled).toggleStyle(.checkbox)
             Text("When on, Ode checks for new messages every five seconds while it’s open.")
+                .font(.system(size: 12)).foregroundStyle(Theme.muted)
+            Toggle("Ode says its short lines out loud", isOn: $odeSpeaks).toggleStyle(.checkbox)
+            Text("Things like \u{201C}Maya asked you something on Tuesday.\u{201D} Ode never reads anyone\u{2019}s messages aloud.")
                 .font(.system(size: 12)).foregroundStyle(Theme.muted)
         }
         .task { messages = await Task.detached { MessagesAccess.check() }.value }

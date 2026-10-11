@@ -23,6 +23,7 @@ struct MainView: View {
     @State private var typed = ""
     @State private var keyMonitor: Any?
     @State private var gate = PushToTalkGate()
+    @State private var voice = OdeVoice()
     @State private var showingSettings = false
     @State private var home = true
     @FocusState private var searchFocused: Bool
@@ -212,6 +213,7 @@ struct MainView: View {
             switch action {
             case .start:
                 notice = nil
+                voice.stop()
                 capture.press()
             case .finish:
                 endListening()
@@ -244,19 +246,26 @@ struct MainView: View {
         case .reply(let id, let request):
             guard let person = model.people.first(where: { $0.id == id }) else { return }
             draftRequest = DraftRequest(person: person, steer: "", spoken: request)
+            voice.say(OdeLines.routed(name: OdeLines.firstName(person.title)))
         case .ambiguous(let ids, let request):
-            notice = .which(model.people.filter { ids.contains($0.id) }, request)
+            let people = model.people.filter { ids.contains($0.id) }
+            notice = .which(people, request)
+            voice.say(OdeLines.which(people.map(\.title)))
         case .edit(let instruction):
             pendingEdit = instruction
         case .ask:
             guard let item = model.waiting.first, let person = model.people.first(where: { $0.id == item.conversationID }) else {
                 notice = .allCaughtUp
+                voice.say(OdeLines.caughtUp)
                 return
             }
             draftRequest = DraftRequest(person: person, steer: item.steer)
+            let promise = item.steer.hasPrefix("follow up on: ") ? String(item.steer.dropFirst("follow up on: ".count)) : nil
+            voice.say(OdeLines.waiting(item.kind, name: OdeLines.firstName(person.title), since: item.since, promise: promise, now: .now))
         case .unknown(let heard):
             typed = heard
             notice = .whoFor
+            voice.say(OdeLines.whoFor)
         }
     }
 
