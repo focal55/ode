@@ -44,19 +44,22 @@ public enum VoiceCheck {
     }
 
     private static let questionCues: Set<String> = ["ask", "how", "what", "when", "where", "why", "who", "which", "whether"]
+    /// Speech has no question marks, so a clause that opens like a question counts as one.
+    private static let questionOpeners: Set<String> = ["can", "could", "would", "will", "should", "do", "does", "did", "is",
+                                                       "are", "want", "wanna", "shall"]
     private static let numberWords = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
                                       "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
                                       "eighteen", "nineteen", "twenty"]
     private static let stopWords: Set<String> = [
         "that", "this", "with", "have", "from", "they", "them", "their", "there", "what", "when", "where", "which", "will",
         "would", "could", "should", "about", "just", "really", "tell", "text", "know", "said", "says", "been", "were",
-        "your", "yours", "also", "then", "than", "into", "some", "okay", "yeah", "like", "want", "make", "sure", "doing",
+        "your", "yours", "also", "then", "than", "into", "some", "okay", "yeah", "like", "want", "make", "sure", "doing", "check",
     ]
 
     public static func problems(request: String, draft: String) -> [Problem] {
         let spoken = words(request), written = words(draft)
         var problems: [Problem] = []
-        if draft.contains("?"), !request.contains("?"), !spoken.contains(where: questionCues.contains) {
+        if draft.contains("?"), !request.contains("?"), !spoken.contains(where: questionCues.contains), !opensAQuestion(request) {
             problems.append(.addedQuestion)
         }
         let spokenNumbers = Set(spoken.compactMap(number))
@@ -68,6 +71,12 @@ public enum VoiceCheck {
         if !dropped.isEmpty { problems.append(.dropped(dropped)) }
         if written.count > spoken.count * 2 + 8 { problems.append(.tooLong) }
         return problems
+    }
+
+    private static func opensAQuestion(_ text: String) -> Bool {
+        text.lowercased().split { ",.;!".contains($0) }.contains { clause in
+            words(String(clause)).first.map(questionOpeners.contains) ?? false
+        }
     }
 
     private static func words(_ text: String) -> [String] {

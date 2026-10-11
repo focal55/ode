@@ -22,6 +22,20 @@ import Testing
         #expect(VoiceCheck.problems(request: "ask how the new job is going", draft: "How's the new job going?").isEmpty)
     }
 
+    @Test func spokenQuestionsNeedNoQuestionMark() {
+        #expect(VoiceCheck.problems(request: "love the place, can we see it Thursday",
+                                    draft: "Love the place. Can we see it Thursday?").isEmpty)
+    }
+
+    @Test func aQuestionWordMidSentenceDoesNotExcuseAnAddedQuestion() {
+        #expect(VoiceCheck.problems(request: "I can do Sunday", draft: "I can do Sunday, want to grab lunch?")
+                .contains(.addedQuestion))
+    }
+
+    @Test func checkInIsAnInstructionNotContent() {
+        #expect(VoiceCheck.problems(request: "check in, ask how the knee is", draft: "How's the knee?").isEmpty)
+    }
+
     @Test func anInventedQuestionIsFlagged() {
         #expect(VoiceCheck.problems(request: "I'm running late", draft: "I'm running late, want me to grab coffee?")
                 .contains(.addedQuestion))
