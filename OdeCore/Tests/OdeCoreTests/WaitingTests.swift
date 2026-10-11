@@ -81,6 +81,17 @@ private func conversation(group: Bool = false) -> Conversation {
         #expect(find([w(1, me: true, "see you at 7", hoursAgo: 6), w(2, me: false, text, hoursAgo: 5)]) == nil)
     }
 
+    @Test(arguments: ["K, talk soon", "Ok, love you", "talk soon!", "Night!", "ok and thanks", "Sounds good. Love you ❤️",
+                      "bye, see you soon", "No worries!"])
+    func signOffsAreNotWaiting(_ text: String) {
+        #expect(find([w(1, me: true, "see you at 7", hoursAgo: 6), w(2, me: false, text, hoursAgo: 5)]) == nil)
+    }
+
+    @Test(arguments: ["Sounds good, see you at 7", "Thanks! Can you send the photos", "ok, call me tomorrow"])
+    func signOffsWithMoreStillCount(_ text: String) {
+        #expect(find([w(1, me: true, "see you at 7", hoursAgo: 6), w(2, me: false, text, hoursAgo: 5)]) != nil)
+    }
+
     @Test(arguments: ["ok?", "ok but when", "thanks for the help, how much do I owe you", "lol what"])
     func nearClosersStillCount(_ text: String) {
         #expect(find([w(1, me: true, "see you at 7", hoursAgo: 6), w(2, me: false, text, hoursAgo: 5)]) != nil)

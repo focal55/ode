@@ -73,6 +73,9 @@ extension Waiting {
     private static let closers: Set<String> = [
         "ok", "okay", "k", "kk", "thanks", "thank you", "thx", "ty", "lol", "haha", "hahaha", "lmao", "nice", "cool",
         "sounds good", "got it", "np", "no problem", "you too", "will do", "perfect", "great",
+        "talk soon", "talk later", "ttyl", "later", "bye", "night", "good night", "goodnight", "gn", "love you", "love ya",
+        "ily", "see you", "see ya", "cya", "see you soon", "deal", "bet", "yep", "yup", "sure", "for sure", "sounds great",
+        "all good", "no worries", "same",
     ]
     private static let closingEmoji: Set<Character> = ["👍", "❤", "♥"]
 
@@ -86,9 +89,16 @@ extension Waiting {
         let trimmed = plain.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !trimmed.contains("?") else { return false }
         if trimmed.allSatisfy({ closingEmoji.contains($0) || $0.isWhitespace }) { return true }
-        var core = Substring(trimmed)
-        while let last = core.last, last.isPunctuation || last.isWhitespace || isEmoji(last) { core = core.dropLast() }
-        return closers.contains(String(core))
+        // "K, talk soon" is two closers in a row, not a message that needs an answer.
+        let clauses = trimmed.replacingOccurrences(of: " and ", with: ",")
+            .split { ",.!;".contains($0) }
+            .map { clause -> String in
+                var core = Substring(clause)
+                while let last = core.last, last.isPunctuation || last.isWhitespace || isEmoji(last) { core = core.dropLast() }
+                return core.trimmingCharacters(in: .whitespaces)
+            }
+            .filter { !$0.isEmpty }
+        return !clauses.isEmpty && clauses.allSatisfy(closers.contains)
     }
 
     /// Emoji, but not the digits and symbols Unicode also flags as emoji-capable.
