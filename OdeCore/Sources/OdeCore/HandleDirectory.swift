@@ -6,20 +6,24 @@ public struct HandleDirectory: Sendable {
         public let name: String
         public let phones: [String]
         public let emails: [String]
+        public let nickname: String?
+        public let photo: Data?
 
-        public init(name: String, phones: [String], emails: [String]) {
+        public init(name: String, phones: [String], emails: [String], nickname: String? = nil, photo: Data? = nil) {
             self.name = name
             self.phones = phones
             self.emails = emails
+            self.nickname = nickname
+            self.photo = photo
         }
     }
 
-    private var entryNames: [String] = []
+    private var entries: [Entry] = []
     private var entryIndex: [String: Int] = [:]
 
     public init(entries: [Entry] = []) {
+        self.entries = entries
         for (index, entry) in entries.enumerated() {
-            entryNames.append(entry.name)
             for key in entry.phones.compactMap(Self.phoneKey) + entry.emails.compactMap(Self.emailKey) where entryIndex[key] == nil {
                 entryIndex[key] = index
             }
@@ -27,7 +31,20 @@ public struct HandleDirectory: Sendable {
     }
 
     public func name(for handle: String) -> String? {
-        contactKey(for: handle).map { entryNames[$0] }
+        contactKey(for: handle).map { entries[$0].name }
+    }
+
+    public func nickname(for handle: String) -> String? {
+        contactKey(for: handle).flatMap { entries[$0].nickname }
+    }
+
+    public func photo(for handle: String) -> Data? {
+        contactKey(for: handle).flatMap { entries[$0].photo }
+    }
+
+    public func photo(for conversation: Conversation) -> Data? {
+        guard !conversation.isGroup else { return nil }
+        return conversation.participants.lazy.compactMap { photo(for: $0) }.first
     }
 
     /// Identifies the contact card a handle belongs to, so one person's phone and email
