@@ -28,6 +28,40 @@ public enum VoiceIntent: Equatable, Sendable {
         }
     }
 
+    public struct Candidate: Sendable {
+        public let id: Int64
+        public let title: String
+        public let nickname: String?
+        public let isGroup: Bool
+        public let lastActive: Date?
+
+        public init(id: Int64, title: String, nickname: String?, isGroup: Bool, lastActive: Date?) {
+            self.id = id
+            self.title = title
+            self.nickname = nickname
+            self.isGroup = isGroup
+            self.lastActive = lastActive
+        }
+    }
+
+    /// One speakable entry per name: when two conversations share a title, the more recent one answers to it.
+    public static func people(from candidates: [Candidate]) -> [Person] {
+        var chosen: [String: Candidate] = [:]
+        var order: [String] = []
+        for candidate in candidates {
+            let key = candidate.title.lowercased()
+            if let existing = chosen[key] {
+                if (candidate.lastActive ?? .distantPast) > (existing.lastActive ?? .distantPast) { chosen[key] = candidate }
+            } else {
+                chosen[key] = candidate
+                order.append(key)
+            }
+        }
+        return order.compactMap { chosen[$0] }.map {
+            Person(id: $0.id, names: Person.spokenNames(title: $0.title, nickname: $0.nickname, isGroup: $0.isGroup))
+        }
+    }
+
     private enum Verb { case say, ask, letKnow, checkIn }
 
     private static let verbs: [(words: [String], kind: Verb)] = [

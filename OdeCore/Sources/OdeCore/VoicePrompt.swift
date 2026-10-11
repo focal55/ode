@@ -14,14 +14,28 @@ public enum VoicePrompt {
         public let text: String
     }
 
+    public static let revisionInstructions = """
+        You revise a text message You are about to send. Apply only the change You asked for and keep the rest as it is: \
+        the same points, words and tone. Add nothing You didn't ask for. If the change asks to remove something, remove it.
+        """
+
     public static func prompt(messages: [Message], name: (String?) -> String, request: String, isGroup: Bool) -> String {
+        (conversation(messages, name: name, isGroup: isGroup) + ["What You said: \(request)"]).joined(separator: "\n")
+    }
+
+    public static func revision(messages: [Message], name: (String?) -> String, draft: String, instruction: String,
+                                isGroup: Bool) -> String {
+        (conversation(messages, name: name, isGroup: isGroup) + ["Your draft: \(draft)", "Change You asked for: \(instruction)"])
+            .joined(separator: "\n")
+    }
+
+    private static func conversation(_ messages: [Message], name: (String?) -> String, isGroup: Bool) -> [String] {
         var lines = [isGroup ? "Group conversation:" : "Conversation:"]
         lines += messages.filter { $0.kind == .text && $0.text != nil }.suffix(8).map { message in
             "\(message.isFromMe ? "You" : name(message.sender)): \(message.text!.prefix(280))"
         }
         if let style = WritingStyle(of: messages).summary { lines.append(style) }
-        lines.append("What You said: \(request)")
-        return lines.joined(separator: "\n")
+        return lines
     }
 
     public static var schema: [String: Any] {
@@ -39,6 +53,7 @@ public enum VoiceCheck {
     public enum Problem: Equatable, Sendable {
         case addedQuestion
         case addedNumber(String)
+        case reportedSpeech
         case dropped([String])
         case droppedNegation
         case tooLong
@@ -50,6 +65,7 @@ public enum VoiceCheck {
     private static let questionOpeners: Set<String> = ["can", "could", "would", "will", "should", "do", "does", "did", "is",
                                                        "are", "want", "wanna", "shall"]
     private static let pronouns: Set<String> = ["i", "you", "we", "they", "he", "she", "it"]
+    private static let reportedPronouns: Set<String> = ["her", "his", "him", "she", "he", "shes", "hes"]
     private static let clauseBreaks = [" and ", " but ", " so ", " then "]
     private static let negations: Set<String> = ["not", "no", "never", "cant", "cannot", "wont", "dont", "didnt", "isnt",
                                                  "arent", "wasnt", "werent", "shouldnt", "couldnt", "wouldnt", "havent",
@@ -81,6 +97,11 @@ public enum VoiceCheck {
         var seen = Set<String>()
         for added in numbers(in: written) where !spokenNumbers.contains(added) && seen.insert(added).inserted {
             problems.append(.addedNumber(added))
+        }
+        // "ask how her mom is" sent to her should say "your mom"; copying "her mom" talks about her, not to her.
+        let draftPairs = Set(zip(written, written.dropFirst()).map { "\($0) \(stem($1))" })
+        if zip(spoken, spoken.dropFirst()).contains(where: { reportedPronouns.contains($0) && draftPairs.contains("\($0) \(stem($1))") }) {
+            problems.append(.reportedSpeech)
         }
         if spoken.contains(where: negations.contains), !written.contains(where: negations.contains) {
             problems.append(.droppedNegation)

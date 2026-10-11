@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import OdeCore
 
@@ -92,5 +93,15 @@ import Testing
         #expect(parse("tell Bob hi") == .unknown("tell Bob hi"))
         #expect(parse("um uh") == .unknown(""))
         #expect(parse("") == .unknown(""))
+    }
+
+    @Test func theMostRecentConversationKeepsASharedName() {
+        let people = VoiceIntent.people(from: [
+            .init(id: 1, title: "Maya Chen", nickname: nil, isGroup: false, lastActive: Date(timeIntervalSince1970: 100)),
+            .init(id: 2, title: "Sam Lee", nickname: nil, isGroup: false, lastActive: nil),
+            .init(id: 18, title: "maya chen", nickname: nil, isGroup: false, lastActive: Date(timeIntervalSince1970: 200)),
+        ])
+        #expect(people.map(\.id) == [18, 2])
+        #expect(VoiceIntent.parse("tell Maya Chen hi", people: people) == .reply(conversationID: 18, request: "hi"))
     }
 }

@@ -90,4 +90,16 @@ import Testing
         let draft = "Sounds good to me, I really appreciate you thinking of me and I can't wait to see you there this weekend"
         #expect(VoiceCheck.problems(request: "sounds good", draft: draft).contains(.tooLong))
     }
+
+    @Test func revisionCarriesTheDraftAndTheChange() {
+        let prompt = VoicePrompt.revision(messages: [], name: { _ in "Maya" }, draft: "I'm in for Saturday!",
+                                          instruction: "make it shorter", isGroup: false)
+        #expect(prompt.contains("Your draft: I'm in for Saturday!"))
+        #expect(prompt.hasSuffix("Change You asked for: make it shorter"))
+    }
+
+    @Test func copiedReportedSpeechIsFlagged() {
+        #expect(VoiceCheck.problems(request: "ask how her mom's doing", draft: "How is her mom doing?") == [.reportedSpeech])
+        #expect(VoiceCheck.problems(request: "ask how her mom's doing", draft: "How's your mom doing?").isEmpty)
+    }
 }
