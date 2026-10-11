@@ -374,10 +374,14 @@ final class AppModel {
         }
     }
 
-    func draftReply(for person: PersonHealth, steer: String, length: DraftLength) async -> DraftResult {
+    func draftReply(for person: PersonHealth, steer: String, length: DraftLength, avoid: [String] = []) async -> DraftResult? {
         await ReplyDrafter.draft(messages: threads[person.id] ?? [], name: speakerName(for: person),
                                  openLoops: confirmedLoops(for: person).map(\.task), steer: steer, length: length,
-                                 isGroup: person.conversation.isGroup, cloud: cloud(.drafting, person))
+                                 isGroup: person.conversation.isGroup, avoid: avoid, cloud: cloud(.drafting, person))
+    }
+
+    func draftingRoute(for person: PersonHealth) -> Route {
+        ai.route(for: .drafting, label: labels[person.id])
     }
 
     func openLoops(for person: PersonHealth) async -> OpenLoops {

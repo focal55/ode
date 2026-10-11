@@ -80,7 +80,9 @@ private struct ModelsSettings: View {
         VStack(alignment: .leading, spacing: 32) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("AI models").font(.system(size: 22, weight: .semibold)).tracking(-0.4)
-                Text("Apple Intelligence handles everything by default. Add your own keys only if you want a different model for a job — they live in your Mac’s Keychain.")
+                Text(AISettings.cloudEnabled
+                     ? "Apple Intelligence handles everything by default. Add your own keys only if you want a different model for a job — they live in your Mac’s Keychain."
+                     : "Apple Intelligence handles everything by default. Point a job at a local model if you want something stronger — nothing leaves your Mac either way.")
                     .foregroundStyle(Theme.secondary)
             }
 
@@ -95,11 +97,13 @@ private struct ModelsSettings: View {
                 .opacity(0.6)
             }
 
-            group("Optional · your own keys and local models") {
-                keyRow(.anthropic, detail: "Claude models · used for jobs you route to them")
-                Divider().overlay(Theme.hairline)
-                keyRow(.openAI, detail: "Optional · alternate drafting model")
-                Divider().overlay(Theme.hairline)
+            group(AISettings.cloudEnabled ? "Optional · your own keys and local models" : "Optional · local models") {
+                if AISettings.cloudEnabled {
+                    keyRow(.anthropic, detail: "Claude models · used for jobs you route to them")
+                    Divider().overlay(Theme.hairline)
+                    keyRow(.openAI, detail: "Optional · alternate drafting model")
+                    Divider().overlay(Theme.hairline)
+                }
                 localRow
             }
 
@@ -121,23 +125,29 @@ private struct ModelsSettings: View {
                 .padding(.horizontal, 18).padding(.vertical, 14)
             }
 
-            HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 12) {
-                    label("What goes to the cloud")
-                    checkbox($ai.askBeforeCloud, "Ask before a conversation is sent to a cloud model for the first time",
-                             "Shows which provider and which conversation")
-                    checkbox($ai.redactBeforeCloud, "Strip phone numbers, emails and addresses before sending",
-                             "Replaced with placeholders, restored in what comes back")
-                    checkbox($ai.familyOnDevice, "On-device only for Family",
-                             familyNames.isEmpty ? "Label people as Family from the sidebar" : "\(familyNames) never reach a cloud model")
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                spendCard.frame(width: 300)
-            }
+            if AISettings.cloudEnabled { cloudRules }
         }
         .task {
-            for provider in [Provider.anthropic, .openAI] where ai.hasKey(provider) { await ai.verify(provider) }
+            if AISettings.cloudEnabled {
+                for provider in [Provider.anthropic, .openAI] where ai.hasKey(provider) { await ai.verify(provider) }
+            }
             await ai.verify(.local)
+        }
+    }
+
+    private var cloudRules: some View {
+        HStack(alignment: .top, spacing: 20) {
+            VStack(alignment: .leading, spacing: 12) {
+                label("What goes to the cloud")
+                checkbox($ai.askBeforeCloud, "Ask before a conversation is sent to a cloud model for the first time",
+                         "Shows which provider and which conversation")
+                checkbox($ai.redactBeforeCloud, "Strip phone numbers, emails and addresses before sending",
+                         "Replaced with placeholders, restored in what comes back")
+                checkbox($ai.familyOnDevice, "On-device only for Family",
+                         familyNames.isEmpty ? "Label people as Family from the sidebar" : "\(familyNames) never reach a cloud model")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            spendCard.frame(width: 300)
         }
     }
 
@@ -165,6 +175,7 @@ private struct ModelsSettings: View {
                 }
                 .buttonStyle(CompactPrimaryButtonStyle())
                 .disabled((keyDrafts[provider] ?? "").isEmpty)
+                verification(provider)
             }
         }
     }
@@ -201,7 +212,7 @@ private struct ModelsSettings: View {
             Spacer()
             Picker(job.title, selection: Binding(get: { current }, set: { ai.routes[job] = $0 })) {
                 Text("Apple on-device").tag(Route.onDevice)
-                ForEach([Provider.anthropic, .openAI, .local]) { provider in
+                ForEach(AISettings.cloudEnabled ? [Provider.anthropic, .openAI, .local] : [.local]) { provider in
                     if provider == .local ? ai.verified[.local] == true : ai.hasKey(provider) {
                         Section(provider.name) {
                             ForEach(ai.models[provider] ?? [], id: \.self) { id in
@@ -360,10 +371,12 @@ private struct PrivacySettings: View {
                 }
                 .toggleStyle(.switch)
             }
-            VStack(alignment: .leading, spacing: 8) {
-                Button("Forget cloud permissions") { model.ai.forgetConsents() }.buttonStyle(.bordered)
-                Text("Ode will ask again before sending any conversation to a cloud model.")
-                    .font(.system(size: 12)).foregroundStyle(Theme.muted)
+            if AISettings.cloudEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    Button("Forget cloud permissions") { model.ai.forgetConsents() }.buttonStyle(.bordered)
+                    Text("Ode will ask again before sending any conversation to a cloud model.")
+                        .font(.system(size: 12)).foregroundStyle(Theme.muted)
+                }
             }
             Text("Ode never sends messages for you, and API keys stay in your Keychain.")
                 .font(.system(size: 13)).foregroundStyle(Theme.secondary)

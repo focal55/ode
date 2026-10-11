@@ -1,6 +1,7 @@
 import Foundation
 import OdeCore
 import Observation
+import Security
 
 enum AIJob: String, CaseIterable, Identifiable, Codable {
     case quickReads, deepAnalysis, drafting
@@ -43,6 +44,10 @@ typealias CloudRunner = (CloudRequest) async -> Data?
 /// passes through: consent, redaction, Family-only-on-device and the monthly cap.
 @MainActor @Observable
 final class AISettings {
+    /// Cloud providers are hidden while Ode proves itself on this Mac alone; routes saved to
+    /// them run on device instead.
+    static let cloudEnabled = false
+
     private enum Key {
         static let routes = "aiRoutes", localURL = "localBaseURL", ask = "askBeforeCloud", redact = "redactBeforeCloud"
         static let family = "familyOnDevice", cap = "monthlyCap", spend = "cloudSpend", tokens = "cloudTokens", consents = "cloudConsents"
@@ -63,6 +68,8 @@ final class AISettings {
     private(set) var verified: [Provider: Bool] = [:]
     private(set) var models: [Provider: [String]] = [.anthropic: CloudClient.anthropicModels]
     private(set) var verificationError: [Provider: String] = [:]
+    /// Mirrors the Keychain so views refresh when a key is saved or removed.
+    private var keys: [Provider: String] = [:]
     var pendingConsent: ConsentRequest?
 
     init() {
@@ -76,6 +83,7 @@ final class AISettings {
         spend = defaults.dictionary(forKey: Key.spend) as? [String: Double] ?? [:]
         tokens = defaults.dictionary(forKey: Key.tokens) as? [String: Int] ?? [:]
         consents = Set(defaults.stringArray(forKey: Key.consents) ?? [])
+        for provider in [Provider.anthropic, .openAI] { keys[provider] = Keychain.read(provider.rawValue) }
     }
 
     private static var month: String { Date.now.formatted(.iso8601.year().month()) }
@@ -86,29 +94,44 @@ final class AISettings {
 
     // MARK: Keys
 
-    func hasKey(_ provider: Provider) -> Bool { Keychain.read(provider.rawValue) != nil }
+    func hasKey(_ provider: Provider) -> Bool { keys[provider] != nil }
 
     func maskedKey(_ provider: Provider) -> String? {
-        Keychain.read(provider.rawValue).map { key in String(key.prefix(7)) + "•••••••••" + String(key.suffix(4)) }
+        keys[provider].map { key in String(key.prefix(7)) + "•••••••••" + String(key.suffix(4)) }
     }
 
+    /// The Keychain only hands an item back to the app that signed it, so a write that can't
+    /// be read back (a stale build still running after a rebuild) is reported, not hidden.
     func saveKey(_ key: String, for provider: Provider) async {
-        Keychain.write(key.trimmingCharacters(in: .whitespacesAndNewlines), for: provider.rawValue)
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let status = Keychain.write(key, for: provider.rawValue)
+        keys[provider] = Keychain.read(provider.rawValue)
+        guard status == errSecSuccess, keys[provider] == key else {
+            verified[provider] = false
+            verificationError[provider] = status == errSecSuccess
+                ? "Saved, but Ode can’t read it back. Quit every copy of Ode and reopen it."
+                : "Couldn’t save to the Keychain (error \(status))."
+            return
+        }
         await verify(provider)
     }
 
     func removeKey(_ provider: Provider) {
         Keychain.delete(provider.rawValue)
+        keys[provider] = nil
         verified[provider] = nil
+        verificationError[provider] = nil
         for job in AIJob.allCases where routes[job]?.provider == provider { routes[job] = .onDevice }
     }
 
     func verify(_ provider: Provider) async {
         do {
-            let found = try await CloudClient.models(provider: provider, key: Keychain.read(provider.rawValue), localBaseURL: localURL)
+            let found = try await CloudClient.models(provider: provider, key: keys[provider], localBaseURL: localURL)
             verified[provider] = true
             verificationError[provider] = nil
-            if provider != .anthropic { models[provider] = found.filter { !$0.contains("embed") } }
+            models[provider] = provider == .anthropic
+                ? CloudClient.anthropicModels.filter(found.contains)
+                : found.filter { !$0.contains("embed") }
         } catch {
             verified[provider] = false
             verificationError[provider] = Self.describe(error)
@@ -122,6 +145,7 @@ final class AISettings {
     func route(for job: AIJob, label: Relationship?) -> Route {
         let route = routes[job] ?? .onDevice
         if route.provider.leavesTheMac {
+            if !Self.cloudEnabled { return .onDevice }
             if familyOnDevice && label == .family { return .onDevice }
             if route.provider == .anthropic && monthSpend >= monthlyCap { return .onDevice }
             if !hasKey(route.provider) { return .onDevice }
@@ -150,10 +174,10 @@ final class AISettings {
         do {
             let (data, usage) = switch route.provider {
             case .anthropic:
-                try await CloudClient.anthropic(key: Keychain.read(Provider.anthropic.rawValue) ?? "", model: route.model, outgoing)
+                try await CloudClient.anthropic(key: keys[.anthropic] ?? "", model: route.model, outgoing)
             case .openAI:
                 try await CloudClient.openAICompatible(baseURL: URL(string: "https://api.openai.com/v1")!,
-                                                       key: Keychain.read(Provider.openAI.rawValue), model: route.model, outgoing)
+                                                       key: keys[.openAI], model: route.model, outgoing)
             case .local:
                 try await CloudClient.openAICompatible(baseURL: localURL, key: nil, model: route.model, outgoing)
             case .onDevice:

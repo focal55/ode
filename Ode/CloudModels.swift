@@ -13,12 +13,13 @@ enum Keychain {
         return String(data: data, encoding: .utf8)
     }
 
-    static func write(_ value: String, for account: String) {
+    @discardableResult
+    static func write(_ value: String, for account: String) -> OSStatus {
         delete(account)
         let item: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                    kSecAttrAccount as String: account, kSecValueData as String: Data(value.utf8),
                                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        SecItemAdd(item as CFDictionary, nil)
+        return SecItemAdd(item as CFDictionary, nil)
     }
 
     static func delete(_ account: String) {
@@ -68,16 +69,19 @@ enum CloudError: Error, Equatable {
 }
 
 enum CloudClient {
-    static let anthropicModels = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
+    /// Models Ode knows how to call and price, strongest first. The key's own model list
+    /// decides which of these appear; anything without a price here can't respect the cap.
+    static let anthropicModels = ["claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"]
 
     /// Dollars per million tokens, input then output, from Anthropic's published rates.
     static let anthropicPrices: [String: (input: Double, output: Double)] = [
-        "claude-opus-5-5": (4, 20), "claude-sonnet-5-5": (2, 10), "claude-haiku-5-5": (0.10, 0.50),
+        "claude-fable-5-1": (10, 50), "claude-opus-5-5": (4, 20), "claude-sonnet-5-5": (2, 10), "claude-haiku-5-5": (0.10, 0.50),
     ]
 
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 120
+        // Non-streaming calls are silent until done, and Fable can think for minutes.
+        configuration.timeoutIntervalForRequest = 600
         return URLSession(configuration: configuration)
     }()
 
@@ -141,7 +145,7 @@ enum CloudClient {
         var request: URLRequest
         switch provider {
         case .anthropic:
-            url = URL(string: "https://api.anthropic.com/v1/models")!
+            url = URL(string: "https://api.anthropic.com/v1/models?limit=1000")!
             request = URLRequest(url: url)
             request.setValue(key, forHTTPHeaderField: "x-api-key")
             request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
@@ -181,14 +185,6 @@ enum CloudSchemas {
         "task": ["type": "string", "description": "The promised task in six words or fewer, starting with a verb."],
         "status": ["type": "string", "enum": ["open", "done", "unclear"]],
     ])
-
-    struct DraftOptionDTO: Decodable { let text: String; let why: String }
-    struct Drafts: Decodable { let direct: DraftOptionDTO; let warm: DraftOptionDTO; let playful: DraftOptionDTO }
-    private static let option = object([
-        "text": ["type": "string", "description": "The complete message You could send as-is."],
-        "why": ["type": "string", "description": "Under eight words on why this works."],
-    ])
-    static let drafts = object(["direct": option, "warm": option, "playful": option])
 
     struct Topics: Decodable { let topics: [String] }
     static let topics = object(["topics": ["type": "array", "items": ["type": "string"],
