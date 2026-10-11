@@ -420,6 +420,28 @@ final class AppModel {
     private var ready: [Int64: (signature: String, result: DraftResult)] = [:]
     private var failedAhead: [Int64: String] = [:]
     private var preparingDrafts = false
+    var voicePeople: [VoiceIntent.Person] {
+        VoiceIntent.people(from: people.map { person in
+            let nickname = person.conversation.isGroup ? nil
+                : person.conversation.participants.lazy.compactMap { self.picker.names.nickname(for: $0) }.first
+            return VoiceIntent.Candidate(id: person.id, title: person.title, nickname: nickname,
+                                         isGroup: person.conversation.isGroup, lastActive: person.conversation.lastMessageDate)
+        })
+    }
+
+    func voiceDraft(for person: PersonHealth, request: String) async -> DraftResult? {
+        let prompt = VoicePrompt.prompt(messages: threads[person.id] ?? [], name: speakerName(for: person), request: request,
+                                        isGroup: person.conversation.isGroup)
+        return await VoiceDrafter.draft(instructions: VoicePrompt.instructions, prompt: prompt, cloud: cloud(.drafting, person))
+    }
+
+    func voiceRevision(for person: PersonHealth, draft: String, instruction: String) async -> DraftResult? {
+        let prompt = VoicePrompt.revision(messages: threads[person.id] ?? [], name: speakerName(for: person), draft: draft,
+                                          instruction: instruction, isGroup: person.conversation.isGroup)
+        return await VoiceDrafter.draft(instructions: VoicePrompt.revisionInstructions, prompt: prompt,
+                                        cloud: cloud(.drafting, person))
+    }
+
     private var activeDrafts = 0
     private static let draftsAhead = 5
 
