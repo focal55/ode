@@ -91,6 +91,7 @@ struct ChooseView: View {
                 LazyVStack(spacing: 0) {
                     ForEach(picker.visible) { conversation in
                         ConversationRow(conversation: conversation, title: picker.title(for: conversation),
+                                        photo: picker.names.photo(for: conversation),
                                         isSelected: picker.isSelected(conversation)) {
                             model.picker.toggle(conversation.id)
                         }
@@ -151,6 +152,7 @@ struct ChooseView: View {
 private struct ConversationRow: View {
     let conversation: Conversation
     let title: String
+    let photo: Data?
     let isSelected: Bool
     let toggle: () -> Void
 
@@ -159,7 +161,7 @@ private struct ConversationRow: View {
             Toggle(title, isOn: Binding(get: { isSelected }, set: { _ in toggle() }))
                 .toggleStyle(.checkbox)
                 .labelsHidden()
-            Avatar(title: title, size: 32)
+            Avatar(title: title, photo: photo, size: 32)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 14, weight: .medium)).lineLimit(1)
                 Text(kind).font(.system(size: 12)).foregroundStyle(Theme.muted).lineLimit(1)

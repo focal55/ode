@@ -13,6 +13,7 @@ struct PersonHealth: Identifiable, Equatable {
     var health: Health
     /// Group members' handles to contact names.
     var memberNames: [String: String] = [:]
+    var photo: Data?
     var id: Int64 { conversation.id }
 
     var messageCount: Int {
@@ -515,6 +516,7 @@ final class AppModel {
             people = zip(conversations, health)
                 .map { conversation, health in
                     var person = PersonHealth(conversation: conversation, title: picker.title(for: conversation), health: health)
+                    person.photo = names.photo(for: conversation)
                     if conversation.isGroup {
                         for handle in conversation.participants { person.memberNames[handle] = names.name(for: handle) }
                     }

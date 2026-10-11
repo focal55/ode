@@ -292,7 +292,7 @@ private struct Sidebar: View {
         let isSelected = person.id == selection
         return Button { select(person.id) } label: {
             HStack(spacing: 10) {
-                Avatar(title: person.title, size: 32)
+                Avatar(title: person.title, photo: person.photo, size: 32)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack {
                         Text(person.title).font(.system(size: 14, weight: .medium)).lineLimit(1)
@@ -345,14 +345,23 @@ private struct Sidebar: View {
 
 struct Avatar: View {
     let title: String
+    var photo: Data? = nil
     var size: CGFloat = 32
 
     var body: some View {
-        let letters = title.split(separator: " ").prefix(2).compactMap(\.first).filter(\.isLetter)
-        Text(letters.isEmpty ? "#" : String(letters).uppercased())
-            .font(.system(size: size * 0.375, weight: .medium))
-            .frame(width: size, height: size)
-            .background(Color(red: 0.914, green: 0.914, blue: 0.898), in: .circle)
+        if let photo, let image = NSImage(data: photo) {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(.circle)
+        } else {
+            let letters = title.split(separator: " ").prefix(2).compactMap(\.first).filter(\.isLetter)
+            Text(letters.isEmpty ? "#" : String(letters).uppercased())
+                .font(.system(size: size * 0.375, weight: .medium))
+                .frame(width: size, height: size)
+                .background(Color(red: 0.914, green: 0.914, blue: 0.898), in: .circle)
+        }
     }
 }
 

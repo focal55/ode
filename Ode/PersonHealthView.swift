@@ -63,7 +63,7 @@ struct PersonHealthView: View {
 
     private func header(_ metrics: RelationshipMetrics, _ patterns: [Patterns.Pattern]) -> some View {
         HStack(alignment: .bottom, spacing: 20) {
-            Avatar(title: person.title, size: 56)
+            Avatar(title: person.title, photo: person.photo, size: 56)
             VStack(alignment: .leading, spacing: 2) {
                 Text(person.title).font(.system(size: 34, weight: .semibold)).tracking(-1)
                 Text(subtitle).foregroundStyle(Theme.muted)

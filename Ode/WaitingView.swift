@@ -49,7 +49,7 @@ struct WaitingView: View {
 
     private func row(_ item: Waiting, _ person: PersonHealth) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            Avatar(title: person.title, size: 36)
+            Avatar(title: person.title, photo: person.photo, size: 36)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(person.title).font(.system(size: 15, weight: .semibold)).lineLimit(1)
