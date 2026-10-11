@@ -18,6 +18,10 @@ struct MainView: View {
     @State private var focus: Int64?
     @State private var draftRequest: DraftRequest?
     @State private var pendingEdit: String?
+    @State private var capture = VoiceCapture()
+    @State private var notice: VoiceNotice?
+    @State private var typed = ""
+    @State private var keyMonitor: Any?
     @State private var showingSettings = false
     @State private var home = true
     @FocusState private var searchFocused: Bool
@@ -73,6 +77,14 @@ struct MainView: View {
                     }
                 }
             }
+            .overlay(alignment: .bottom) {
+                VoiceDock(capture: capture, notice: notice, typed: $typed, submit: { route($0) }) { person, request in
+                    notice = nil
+                    draftRequest = DraftRequest(person: person, steer: "", spoken: request)
+                }
+            }
+            .onAppear { installPushToTalk() }
+            .onDisappear { keyMonitor.map(NSEvent.removeMonitor) }
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(model: model).frame(width: 1100, height: 780)
@@ -170,6 +182,52 @@ struct MainView: View {
         }
         .frame(maxWidth: .infinity)
         .background(Theme.surface)
+    }
+
+    /// Space held anywhere outside a text field talks to Ode; in a text field it's just a space.
+    private func installPushToTalk() {
+        guard keyMonitor == nil else { return }
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { event in
+            guard event.keyCode == 49, event.modifierFlags.intersection([.command, .option, .control]).isEmpty,
+                  !(NSApp.keyWindow?.firstResponder is NSTextView) else { return event }
+            if event.type == .keyDown, !event.isARepeat {
+                notice = nil
+                Task { await capture.start() }
+            } else if event.type == .keyUp {
+                Task {
+                    let heard = await capture.finish()
+                    switch capture.state {
+                    case .denied: notice = .micOff
+                    case .unavailable: notice = .unavailable
+                    default: if !heard.isEmpty { route(heard) }
+                    }
+                }
+            }
+            return nil
+        }
+    }
+
+    private func route(_ text: String) {
+        typed = ""
+        notice = nil
+        switch VoiceIntent.parse(text, people: model.voicePeople, focused: draftRequest?.person.id) {
+        case .reply(let id, let request):
+            guard let person = model.people.first(where: { $0.id == id }) else { return }
+            draftRequest = DraftRequest(person: person, steer: "", spoken: request)
+        case .ambiguous(let ids, let request):
+            notice = .which(model.people.filter { ids.contains($0.id) }, request)
+        case .edit(let instruction):
+            pendingEdit = instruction
+        case .ask:
+            guard let item = model.waiting.first, let person = model.people.first(where: { $0.id == item.conversationID }) else {
+                notice = .allCaughtUp
+                return
+            }
+            draftRequest = DraftRequest(person: person, steer: item.steer)
+        case .unknown(let heard):
+            typed = heard
+            notice = .whoFor
+        }
     }
 
     private var consentTitle: String {

@@ -22,10 +22,11 @@ final class VoiceCapture {
         transcript = ""
         finalized = ""
         released = false
+        // Preparing from the first await, so letting go of Space during the permission prompt can't leave the mic on.
+        state = .preparing
         guard await AVCaptureDevice.requestAccess(for: .audio) else { state = .denied; return }
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: .current),
               let device = AVCaptureDevice.default(for: .audio) else { state = .unavailable; return }
-        state = .preparing
         let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
         do {
             if let install = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
