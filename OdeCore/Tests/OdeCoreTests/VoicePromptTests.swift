@@ -36,6 +36,38 @@ import Testing
         #expect(VoiceCheck.problems(request: "check in, ask how the knee is", draft: "How's the knee?").isEmpty)
     }
 
+    @Test(arguments: [("see you at seven thirty", "See you at 7:30"), ("twenty five minutes out", "25 min out"),
+                      ("I'll call you after five", "I'll call you after 5:00")])
+    func spokenTimesAndQuantitiesMatchDigits(_ request: String, _ draft: String) {
+        #expect(VoiceCheck.problems(request: request, draft: draft).isEmpty)
+    }
+
+    @Test func aChangedNumberInsideATokenIsFlagged() {
+        #expect(VoiceCheck.problems(request: "I'll call you after five", draft: "I'll call you after 6pm") == [.addedNumber("6")])
+    }
+
+    @Test func casualAbbreviationsAreNotDropped() {
+        #expect(VoiceCheck.problems(request: "going to be there tomorrow, sending the photos",
+                                    draft: "gonna be there tmrw, sending the pics").isEmpty)
+    }
+
+    @Test(arguments: [("hows the knee", "How's the knee?"),
+                      ("its at 7 and do you want me to pick you up", "It's at 7, do you want me to pick you up?"),
+                      ("check in", "How are you doing?")])
+    func spokenQuestionsInAnyShapeAreAllowed(_ request: String, _ draft: String) {
+        #expect(VoiceCheck.problems(request: request, draft: draft).isEmpty)
+    }
+
+    @Test(arguments: [("I'm in. ask what time", "I'm in! What time? Should I bring anything?"),
+                      ("I'll call you when I land", "I'll call you when I land, how was your day?")])
+    func aQuestionBeyondWhatYouAskedIsFlagged(_ request: String, _ draft: String) {
+        #expect(VoiceCheck.problems(request: request, draft: draft).contains(.addedQuestion))
+    }
+
+    @Test func aDroppedNegationIsFlagged() {
+        #expect(VoiceCheck.problems(request: "I'm not coming tonight", draft: "I'm coming tonight") == [.droppedNegation])
+    }
+
     @Test func anInventedQuestionIsFlagged() {
         #expect(VoiceCheck.problems(request: "I'm running late", draft: "I'm running late, want me to grab coffee?")
                 .contains(.addedQuestion))

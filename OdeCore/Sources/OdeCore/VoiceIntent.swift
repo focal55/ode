@@ -52,6 +52,8 @@ public enum VoiceIntent: Equatable, Sendable {
         let verb = verbs.first { keys.starts(with: $0.words) }
         let start = verb?.words.count ?? 0
         guard let (ids, length) = match(keys, at: start, people: people) else { return .unknown(spoken) }
+        // Without a verb, only "Will, running late" names Will; "Will you text Sam" is a question.
+        if verb == nil, !words[length - 1].hasSuffix(",") { return .unknown(spoken) }
 
         var rest = Array(words[(start + length)...])
         if verb?.kind == .letKnow, rest.first.map(key) == "know" { rest.removeFirst() }

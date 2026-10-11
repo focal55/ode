@@ -59,6 +59,13 @@ import Testing
         #expect(parse("Maya, running ten minutes late") == .reply(conversationID: 1, request: "running ten minutes late"))
     }
 
+    @Test func aNameThatIsAlsoACommonWordNeedsAVerbOrAComma() {
+        let people = self.people + [.init(id: 9, names: VoiceIntent.Person.spokenNames(title: "Will Park", nickname: nil, isGroup: false))]
+        #expect(VoiceIntent.parse("Will you text Sam", people: people) == .unknown("Will you text Sam"))
+        #expect(VoiceIntent.parse("Will, running late", people: people) == .reply(conversationID: 9, request: "running late"))
+        #expect(VoiceIntent.parse("tell Will running late", people: people) == .reply(conversationID: 9, request: "running late"))
+    }
+
     @Test func punctuationAfterTheNameIsDropped() {
         #expect(parse("Tell Maya, I'm in") == .reply(conversationID: 1, request: "I'm in"))
     }
