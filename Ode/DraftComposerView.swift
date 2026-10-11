@@ -46,6 +46,12 @@ struct DraftComposerView: View {
     private var current: DraftSet? { sets.indices.contains(index) ? sets[index] : nil }
     private var drafts: [Draft] { current?.drafts ?? [] }
     private var inYourWords: Bool { drafts.first?.label == VoiceDrafter.label }
+
+    private var suggestions: [String] {
+        guard inYourWords, work == nil else { return [] }
+        return VoiceSuggestions.make(openLoops: model.confirmedLoops(for: person).map(\.task),
+                                     reminders: model.cachedReminders(for: person).map(\.text), draft: selectedText ?? "")
+    }
     private var route: Route { model.draftingRoute(for: person) }
 
     private var modelName: String {
@@ -164,6 +170,16 @@ struct DraftComposerView: View {
                         card(draft)
                             .id(editKey(draft))
                             .transition(.opacity.combined(with: .offset(y: 8)))
+                    }
+                    if !suggestions.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(suggestions, id: \.self) { suggestion in
+                                Button("Mention: \(suggestion)") { revise("Also mention: \(suggestion)") }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                    .lineLimit(1)
+                            }
+                        }
                     }
                 } else if work != nil {
                     ForEach(["DIRECT", "WARM", "PLAYFUL"], id: \.self, content: skeleton)

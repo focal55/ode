@@ -130,6 +130,11 @@ final class AppModel {
         return found
     }
 
+    /// Reminders already extracted, without starting a model call.
+    func cachedReminders(for person: PersonHealth) -> [Reminder] {
+        remindersCache[person.id] ?? []
+    }
+
     func patterns(for person: PersonHealth) -> [Patterns.Pattern] {
         Patterns.find(in: threads[person.id] ?? [])
     }
