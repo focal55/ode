@@ -24,6 +24,7 @@ struct MainView: View {
     @State private var keyMonitor: Any?
     @State private var gate = PushToTalkGate()
     @State private var voice = OdeVoice()
+    @AppStorage(OdeVoice.settingKey) private var odeSpeaks = true
     @State private var showingSettings = false
     @State private var home = true
     @FocusState private var searchFocused: Bool
@@ -92,6 +93,7 @@ struct MainView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in lostFocus() }
             .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in lostFocus() }
+            .onChange(of: odeSpeaks) { _, on in if !on { voice.stop() } }
             .onChange(of: capture.state) { _, state in
                 switch state {
                 case .denied: notice = .micOff
@@ -260,8 +262,8 @@ struct MainView: View {
                 return
             }
             draftRequest = DraftRequest(person: person, steer: item.steer)
-            let promise = item.steer.hasPrefix("follow up on: ") ? String(item.steer.dropFirst("follow up on: ".count)) : nil
-            voice.say(OdeLines.waiting(item.kind, name: OdeLines.firstName(person.title), since: item.since, promise: promise, now: .now))
+            voice.say(OdeLines.waiting(item.kind, name: OdeLines.firstName(person.title), since: item.since, promise: item.promise,
+                                       now: .now))
         case .unknown(let heard):
             typed = heard
             notice = .whoFor

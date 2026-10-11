@@ -49,11 +49,18 @@ import Testing
     }
 
     @Test func promisesComeFirstThenRemindersUpToThree() {
-        #expect(VoiceSuggestions.make(openLoops: ["Send the Big Sur photos"],
-                                      reminders: ["Her sister's wedding in Portland", "Second-round interview Thursday",
-                                                  "Moving to Denver in March"],
-                                      draft: "Running late, start without me")
-                == ["Send the Big Sur photos", "Her sister's wedding in Portland", "Second-round interview Thursday"])
+        let picked = VoiceSuggestions.make(openLoops: ["Send the Big Sur photos"],
+                                           reminders: ["Her sister's wedding in Portland", "Second-round interview Thursday",
+                                                       "Moving to Denver in March"],
+                                           draft: "Running late, start without me")
+        #expect(picked.map(\.label) == ["Send the Big Sur photos", "Her sister's wedding in Portland", "Second-round interview Thursday"])
+    }
+
+    @Test func promisesAreRevisedAsYourWordsAndRemindersAsSpokenToThem() {
+        let picked = VoiceSuggestions.make(openLoops: ["Send the Big Sur photos"], reminders: ["Her sister's wedding in Portland"],
+                                           draft: "ok")
+        #expect(picked[0].instruction == "Also say I'll send the Big Sur photos.")
+        #expect(picked[1].instruction == "Also mention her sister's wedding in Portland, speaking to them directly.")
     }
 
     @Test func coveredSuggestionsAreLeftOut() {
@@ -61,8 +68,13 @@ import Testing
                                       draft: "I'll send the photos tonight").isEmpty)
     }
 
+    @Test(arguments: [("Call the landlord", "Can I call you tonight?"), ("Send the Big Sur photos", "I'll send you the address")])
+    func sharingOneWordIsNotCovering(_ loop: String, _ draft: String) {
+        #expect(VoiceSuggestions.make(openLoops: [loop], reminders: [], draft: draft).map(\.label) == [loop])
+    }
+
     @Test func duplicatesAreOfferedOnce() {
         #expect(VoiceSuggestions.make(openLoops: ["Call the landlord"], reminders: ["call the landlord", ""],
-                                      draft: "ok") == ["Call the landlord"])
+                                      draft: "ok").map(\.label) == ["Call the landlord"])
     }
 }

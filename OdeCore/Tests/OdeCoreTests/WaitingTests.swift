@@ -229,4 +229,12 @@ private func conversation(group: Bool = false) -> Conversation {
         #expect(Waiting.rank([item(1, .asked, daysAgo: 1, newest: 101)], dismissed: [1: 100]).count == 1)
         #expect(Waiting.rank([item(2, .asked, daysAgo: 1)], dismissed: [1: 100]).count == 1)
     }
+
+    @Test func aPromiseCarriesItsTaskAndNothingElseDoes() {
+        let conversation = Conversation(chats: [Chat(id: 1, identifier: "maya@example.com", displayName: nil, isGroup: false,
+                                                     participants: ["maya@example.com"], messageCount: 1, lastMessageDate: nil)])
+        let promised = Waiting.promised(in: conversation, task: "Send the Big Sur photos", made: now, newestMessageID: 1)
+        #expect(promised.promise == "send the Big Sur photos")
+        #expect(Waiting.unanswered(in: conversation, messages: [w(1, me: false, "dinner friday?", hoursAgo: 3)], now: now)?.promise == nil)
+    }
 }

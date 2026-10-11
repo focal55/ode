@@ -47,7 +47,7 @@ struct DraftComposerView: View {
     private var drafts: [Draft] { current?.drafts ?? [] }
     private var inYourWords: Bool { drafts.first?.label == VoiceDrafter.label }
 
-    private var suggestions: [String] {
+    private var suggestions: [VoiceSuggestions.Suggestion] {
         guard inYourWords, work == nil else { return [] }
         return VoiceSuggestions.make(openLoops: model.confirmedLoops(for: person).map(\.task),
                                      reminders: model.cachedReminders(for: person).map(\.text), draft: selectedText ?? "")
@@ -97,6 +97,10 @@ struct DraftComposerView: View {
             guard let instruction else { return }
             editHandled()
             revise(instruction)
+        }
+        .task(id: inYourWords) {
+            // Fill the reminder suggestions once your words are on screen, so it never competes with the draft.
+            if inYourWords { _ = await model.reminders(for: person) }
         }
         .onChange(of: work) { _, work in
             guard work == nil, let instruction = queuedEdit else { return }
@@ -172,12 +176,12 @@ struct DraftComposerView: View {
                             .transition(.opacity.combined(with: .offset(y: 8)))
                     }
                     if !suggestions.isEmpty {
-                        HStack(spacing: 8) {
-                            ForEach(suggestions, id: \.self) { suggestion in
-                                Button("Mention: \(suggestion)") { revise("Also mention: \(suggestion)") }
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(suggestions, id: \.label) { suggestion in
+                                Button("Mention: \(suggestion.label)") { revise(suggestion.instruction) }
                                     .buttonStyle(.bordered)
                                     .controlSize(.small)
-                                    .lineLimit(1)
+                                    .help(suggestion.label)
                             }
                         }
                     }

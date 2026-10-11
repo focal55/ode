@@ -169,16 +169,27 @@ public enum VoiceCheck {
 
 /// What Ode knows that's worth mentioning, offered as a tap rather than written in. Your promises come first.
 public enum VoiceSuggestions {
-    public static func make(openLoops: [String], reminders: [String], draft: String, limit: Int = 3) -> [String] {
+    public struct Suggestion: Equatable, Sendable {
+        public let label: String
+        /// How to ask for it: a promise is something you'll do, a reminder is said to them, never about them.
+        public let instruction: String
+    }
+
+    public static func make(openLoops: [String], reminders: [String], draft: String, limit: Int = 3) -> [Suggestion] {
         let covered = Set(VoiceCheck.contentStems(draft))
         var seen = Set<String>()
-        var picked: [String] = []
-        for candidate in openLoops + reminders {
+        var picked: [Suggestion] = []
+        let candidates = openLoops.map { ($0, true) } + reminders.map { ($0, false) }
+        for (candidate, isPromise) in candidates {
             let text = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty, seen.insert(text.lowercased()).inserted else { continue }
+            // The first word is usually the verb ("send", "call"); what matters is whether the rest is already said.
             let stems = VoiceCheck.contentStems(text)
-            if !stems.isEmpty, stems.filter(covered.contains).count * 2 >= stems.count { continue }
-            picked.append(text)
+            let essential = stems.count > 1 ? Array(stems.dropFirst()) : stems
+            if !essential.isEmpty, essential.allSatisfy(covered.contains) { continue }
+            let phrase = text.prefix(1).lowercased() + text.dropFirst()
+            picked.append(Suggestion(label: text, instruction: isPromise ? "Also say I'll \(phrase)."
+                                                                          : "Also mention \(phrase), speaking to them directly."))
             if picked.count == limit { break }
         }
         return picked

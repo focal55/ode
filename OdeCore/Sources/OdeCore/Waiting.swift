@@ -108,11 +108,18 @@ extension Waiting {
 }
 
 extension Waiting {
+    private static let promisePrefix = "follow up on: "
+
+    /// Your promise in your words, for Ode to say aloud; nil for anything that isn't a promise.
+    public var promise: String? {
+        kind == .promised && steer.hasPrefix(Self.promisePrefix) ? String(steer.dropFirst(Self.promisePrefix.count)) : nil
+    }
+
     /// A promise the on-device model confirmed is still open.
     public static func promised(in conversation: Conversation, task: String, made: Date, newestMessageID: Int64) -> Waiting {
         let phrase = task.prefix(1).lowercased() + task.dropFirst()
         return Waiting(conversationID: conversation.id, kind: .promised, text: "You said you'd \(phrase)",
-                       steer: "follow up on: \(phrase)", since: made, newestMessageID: newestMessageID)
+                       steer: promisePrefix + phrase, since: made, newestMessageID: newestMessageID)
     }
 
     /// A 1:1 relationship well past its usual gap between long conversations.
