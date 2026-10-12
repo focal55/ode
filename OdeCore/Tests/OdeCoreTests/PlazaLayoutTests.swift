@@ -65,16 +65,53 @@ import Testing
         #expect(horizon == [41, 42, 43, 44, 45])
     }
 
-    @Test func lanternsInARowKeepTheirDistance() {
-        let people = (1...30).map { person(Int64($0) * 104_729) }
-        let placements = PlazaLayout.compute(people: people, waiting: [])
-        let rows = Dictionary(grouping: placements.map(polar), by: { ($0.radius * 10).rounded() })
-        for row in rows.values {
-            let angles = row.map(\.angle).sorted()
-            for (left, right) in zip(angles, angles.dropFirst()) {
-                #expect(right - left >= PlazaLayout.ring(.around).gap - 1e-4)
+    /// Physical sizes as the scene will draw them, independent of the layout's own padded constants: a lantern's radius
+    /// in metres, and a label's angular half-size, hanging 0.7 m below the lantern, seen from 1.6 m up.
+    func boxes(_ p: PlazaLayout.Placement) -> [(az: Double, el: Double, w: Double, h: Double)] {
+        let (az, r) = polar(p)
+        let size: Double = [.owed: 0.5, .quiet: 0.4, .around: 0.3, .horizon: 0.1][p.prominence]!
+        let lantern = (az, atan(Double(p.position.y - 1.6) / r), size / r, size / r)
+        guard p.prominence != .horizon else { return [lantern] }
+        return [lantern, (az, atan(Double(p.position.y - 0.7 - 1.6) / r), 0.04, 0.012)]
+    }
+
+    @Test(arguments: [(7, 12, 60), (12, 0, 20), (3, 3, 45), (1, 0, 1), (9, 9, 80)])
+    func nothingHidesBehindAnotherLanternOrLabel(owed: Int, quiet: Int, tracked: Int) {
+        for scale in [1, 7_919, 104_729] as [Int64] {
+            let people = (1...tracked).map { person(Int64($0) * scale, daysAgo: Double($0)) }
+            let waits = (1...max(1, owed + quiet)).filter { $0 <= owed + quiet }
+                .map { waiting(Int64($0) * scale, $0 <= owed ? .asked : .quiet) }
+            let placements = PlazaLayout.compute(people: people, waiting: waits)
+            let named: Set<PlazaLayout.Prominence> = [.owed, .quiet]
+            for (index, a) in placements.enumerated() {
+                for b in placements.dropFirst(index + 1) {
+                    // Named people never hide each other or each other's labels. Unnamed lights only keep apart
+                    // from their own kind; sitting behind a named lantern is ordinary depth.
+                    let both = named.contains(a.prominence) && named.contains(b.prominence)
+                    guard both || a.prominence == b.prominence else { continue }
+                    let clash = boxes(a).prefix(both ? 2 : 1).contains { x in
+                        boxes(b).prefix(both ? 2 : 1).contains { y in
+                            abs(x.az - y.az) < x.w + y.w && abs(x.el - y.el) < x.h + y.h
+                        }
+                    }
+                    #expect(!clash, "\(a.conversationID) and \(b.conversationID) overlap")
+                }
+                // Inside a level 40 degree view at 16:10: about 0.35 rad up or down, 0.52 rad left or right.
+                for box in boxes(a) where named.contains(a.prominence) {
+                    #expect(abs(box.el) + box.h <= 0.35 && abs(box.az) + box.w <= 0.52, "\(a.conversationID) is off screen")
+                }
             }
         }
+    }
+
+    @Test func seedsAreTheSameOnEveryLaunch() {
+        #expect(PlazaLayout.unit(1) == 0.5665615751722809)
+    }
+
+    @Test func aNewcomerInYourRingDoesNotMoveYou() {
+        let before = PlazaLayout.compute(people: [person(1), person(2)], waiting: [waiting(1, .quiet)])
+        let after = PlazaLayout.compute(people: [person(1), person(2)], waiting: [waiting(1, .quiet), waiting(2, .quiet)])
+        #expect(before.first { $0.conversationID == 1 } == after.first { $0.conversationID == 1 })
     }
 
     @Test func everyoneStaysInsideTheVisibleArc() {
@@ -87,16 +124,27 @@ import Testing
     }
 
     @Test func overflowWrapsIntoARowFurtherBackAndHigher() {
-        let people = (1...7).map { person(Int64($0)) }
-        let placements = PlazaLayout.compute(people: people, waiting: (1...7).map { waiting(Int64($0), .asked) })
-        let capacity = PlazaLayout.ring(.owed).capacity
-        let front = placements.filter { polar($0).radius < PlazaLayout.ring(.owed).radius + 0.5 }
-        let back = placements.filter { polar($0).radius >= PlazaLayout.ring(.owed).radius + 0.5 }
-        #expect(front.count == capacity)
-        #expect(back.count == 7 - capacity)
-        #expect(back.allSatisfy { b in front.allSatisfy { b.position.y > $0.position.y } })
-        // The most urgent people (first in the waiting list) are in the front row.
-        #expect(Set(front.map(\.conversationID)) == Set((1...Int64(capacity)).map { $0 }))
+        let people = (1...9).map { person(Int64($0)) }
+        let placements = PlazaLayout.compute(people: people, waiting: (1...9).map { waiting(Int64($0), .asked) })
+        let byID = Dictionary(uniqueKeysWithValues: placements.map { ($0.conversationID, $0) })
+        let rows = (1...9).map { byID[Int64($0)]!.row }
+        #expect(rows.max()! >= 1)
+        #expect(rows == rows.sorted(), "a more urgent person stands behind a less urgent one")
+        let front = placements.filter { $0.row == 0 }
+        let back = placements.filter { $0.row > 0 }
+        #expect(back.allSatisfy { b in front.allSatisfy { b.position.y > $0.position.y && polar(b).radius > polar($0).radius } })
+    }
+
+    @Test func quietRowReadsLeftToRight() {
+        let placements = PlazaLayout.compute(people: [person(1), person(47)], waiting: [waiting(1, .quiet), waiting(47, .quiet)])
+        #expect(PlazaLayout.readingOrder(placements) == placements.sorted { $0.position.x < $1.position.x }.map(\.conversationID))
+    }
+
+    @Test func readingOrderTakesTheFrontRowBeforeTheBackRow() {
+        let people = (1...9).map { person(Int64($0)) }
+        let placements = PlazaLayout.compute(people: people, waiting: (1...9).map { waiting(Int64($0), .asked) })
+        let expected = placements.sorted { ($0.row, $0.position.x) < ($1.row, $1.position.x) }.map(\.conversationID)
+        #expect(PlazaLayout.readingOrder(placements) == expected)
     }
 
     @Test func readingOrderIsOwedFirstThenLeftToRight() {
